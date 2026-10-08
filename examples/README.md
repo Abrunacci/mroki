@@ -15,6 +15,13 @@ Run mroki-proxy as a single binary — diffs printed to stdout, no database requ
 
 **Use when:** You want the simplest possible setup with no infrastructure dependencies.
 
+#### [rest-to-graphql](rest-to-graphql/)
+Compare a legacy REST service against the GraphQL service that replaces it — diffs printed to stdout.
+- Two tiny runnable services (REST bookings and GraphQL bookings) with deliberate differences
+- `mapping.yaml` showing route matching, query variables, and field renames
+
+**Use when:** You are migrating a REST API to GraphQL and want to verify the new service returns the same data.
+
 ### Caddyfile
 
 #### [basic-gate](caddyfile/basic-gate/)

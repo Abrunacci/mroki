@@ -622,3 +622,15 @@ func TestValidate_multiple_errors(t *testing.T) {
 	assert.Contains(t, err.Error(), "write_timeout must be positive")
 	assert.Contains(t, err.Error(), "idle_timeout must be positive")
 }
+
+func TestValidate_graphql_config(t *testing.T) {
+	standalone := validStandaloneConfig()
+	standalone.App.GraphQLConfig = "mapping.yaml"
+	assert.NoError(t, standalone.Validate(), "graphql_config is allowed in standalone mode")
+
+	api := validAPIConfig()
+	api.App.GraphQLConfig = "mapping.yaml"
+	err := api.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "graphql_config is only supported in standalone mode")
+}
