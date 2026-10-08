@@ -1,0 +1,30 @@
+# REST → GraphQL mapping for the bookings example.
+# Each route says which GraphQL query replaces a REST endpoint, where its
+# variables come from, and how to bring the GraphQL response back to the REST
+# shape. Only the fields listed under response.fields are compared.
+endpoint: /graphql
+
+routes:
+  - match: GET /bookings/{id}
+    query: |
+      query GetBooking($id: ID!) {
+        booking(id: $id) {
+          id
+          guestName
+          checkIn
+          checkOut
+          status
+          totalPrice
+        }
+      }
+    variables:
+      id: path.id          # {id} from the REST path
+    response:
+      root: data.booking   # GraphQL wraps the result in data.<field>
+      fields:              # REST field: GraphQL field (relative to root)
+        id: id
+        guest_name: guestName
+        check_in: checkIn
+        check_out: checkOut
+        status: status
+        total_price: totalPrice
