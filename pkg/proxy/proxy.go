@@ -60,6 +60,9 @@ type Proxy struct {
 	// that want a limit (e.g. the proxy binary's config layer) set one via
 	// WithMaxConcurrentCallbacks.
 	callbackSem chan struct{}
+	// shadowRewriter, when set, builds the shadow request from the original
+	// one. A nil rewriter sends shadow a copy of the live request.
+	shadowRewriter ShadowRequestRewriter
 }
 
 var (
@@ -374,7 +377,9 @@ func (p *Proxy) recoverGoroutine(logger *slog.Logger, name string, onPanic func(
 //     bodies are buffered for replay; oversized/unbounded bodies are streamed to
 //     live only, without full-body buffering
 //  2. Launches live request with client context + timeout
-//  3. Launches shadow request (if sampled) with independent context + timeout
+//  3. Launches shadow request (if sampled) with independent context + timeout,
+//     rewritten first when a ShadowRequestRewriter is configured (a failed
+//     rewrite skips shadow and streams the request to live only)
 //  4. Waits for live response and returns to client immediately
 //  5. Invokes callback with raw responses in background goroutine
 //
@@ -436,6 +441,28 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	body := plan.body
 
+	// Clone the request for the shadow target and add the identification header
+	// so the live request is never modified. The clone carries Background()
+	// context to match the shadow lifecycle. The recorded headers are taken
+	// before any rewrite so stored request data reflects what the client sent.
+	shadowReq := r.Clone(context.Background())
+	shadowReq.Header.Set(ShadowHeader, ShadowHeaderValue)
+	recordedHeaders := shadowReq.Header.Clone()
+	shadowBody := body
+
+	if p.shadowRewriter != nil {
+		rewritten, err := p.shadowRewriter(r, body)
+		if err != nil {
+			// A request the rewriter cannot translate is simply not shadowed;
+			// live traffic is never affected.
+			reqLogger.Debug("skipping shadow proxy: rewrite failed", slog.String("error", err.Error()))
+			p.proxyToLiveOnly(w, r, reqLogger, bytes.NewReader(body), int64(len(body)))
+			return
+		}
+		applyShadowRewrite(shadowReq, rewritten)
+		shadowBody = rewritten.Body
+	}
+
 	liveCtx, liveCancel := context.WithTimeout(r.Context(), p.liveTimeout)
 	defer liveCancel()
 
@@ -474,12 +501,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// ensuring we collect complete response data for the callback
 	shadowCtx, shadowCancel := context.WithTimeout(context.Background(), p.shadowTimeout)
 
-	// Clone the request for the shadow target and add the identification header
-	// so the live request is never modified. The clone carries Background()
-	// context to match the shadow lifecycle.
-	shadowReq := r.Clone(context.Background())
-	shadowReq.Header.Set(ShadowHeader, ShadowHeaderValue)
-
 	// Launch shadow request
 	go func() {
 		// Contain any panic so it never crashes the process; unblock the
@@ -488,7 +509,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			shadowCh <- responseResult{err: fmt.Errorf("panic in shadow goroutine: %v", v)}
 		})
 		start := time.Now()
-		resp, err := p.forwardRequest(shadowCtx, shadowReq, p.Shadow, bytes.NewReader(body), int64(len(body)))
+		resp, err := p.forwardRequest(shadowCtx, shadowReq, p.Shadow, bytes.NewReader(shadowBody), int64(len(shadowBody)))
 		if err != nil {
 			shadowCh <- responseResult{err: err}
 			return
@@ -574,9 +595,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Method:   r.Method,
 				Path:     r.URL.Path,
 				RawQuery: r.URL.RawQuery,
-				// Capture the shadow request headers so the identification
-				// header is recorded in stored request data for reference.
-				Headers: shadowReq.Header.Clone(),
+				// Capture the request headers plus the identification header so
+				// it is recorded in stored request data for reference. They are
+				// taken before any shadow rewrite (see recordedHeaders).
+				Headers: recordedHeaders,
 				Body:    body,
 			}
 			live := ProxyResponse{
@@ -622,6 +644,19 @@ func (p *Proxy) forwardRequest(ctx context.Context, original *http.Request, targ
 		slog.String("method", req.Method),
 		slog.String("url", req.URL.String()))
 	return p.client.Do(req)
+}
+
+// applyShadowRewrite applies a rewritten shadow request onto the cloned shadow
+// request. The identification header is set again so a rewriter cannot drop it.
+func applyShadowRewrite(shadowReq *http.Request, rewritten ShadowRequest) {
+	shadowReq.Method = rewritten.Method
+	shadowReq.URL.Path = rewritten.Path
+	shadowReq.URL.RawPath = ""
+	shadowReq.URL.RawQuery = rewritten.RawQuery
+	if rewritten.Header != nil {
+		shadowReq.Header = rewritten.Header.Clone()
+	}
+	shadowReq.Header.Set(ShadowHeader, ShadowHeaderValue)
 }
 
 func copyHeader(src, dst http.Header) {
