@@ -112,6 +112,7 @@ func TestAdapter_RewriteRequest_no_route(t *testing.T) {
 	for _, tc := range []struct{ method, target string }{
 		{http.MethodGet, "/guests/7"},
 		{http.MethodPost, "/bookings/1042"},
+		{http.MethodHead, "/bookings/1042"},
 		{http.MethodGet, "/bookings/1042/extra"},
 	} {
 		t.Run(tc.method+" "+tc.target, func(t *testing.T) {

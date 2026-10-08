@@ -214,9 +214,13 @@ type matchKey struct{}
 
 // match finds the route for a method and path, using the same matching rules
 // as http.ServeMux (precedence, {name} wildcards). A fresh request is built so
-// the caller's request is never mutated.
+// the caller's request is never mutated. HEAD requests never match: ServeMux
+// lets a GET pattern match HEAD, but a HEAD response has no body to compare.
 func (a *Adapter) match(method, path string) (match, bool) {
 	var m match
+	if method == http.MethodHead {
+		return m, false
+	}
 	req := &http.Request{
 		Method: method,
 		URL:    &url.URL{Path: path},
