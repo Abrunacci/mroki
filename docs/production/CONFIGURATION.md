@@ -188,6 +188,41 @@ Configure how responses are compared. These options only apply in **Standalone m
 | `MROKI_APP_DIFF_FLOAT_TOLERANCE` | No | `0` | Tolerance for floating-point comparisons (`0` = exact) |
 | `MROKI_APP_DIFF_SORT_ARRAYS` | No | `false` | Sort arrays before comparison so element order is ignored. When `false`, arrays are compared positionally and a reorder surfaces as `remove`/`add` pairs. |
 
+### GraphQL Shadow Adapter
+
+Compare a REST live service against a GraphQL shadow service (e.g. during a REST → GraphQL migration). **Standalone mode only** — the proxy refuses to start if this is combined with API mode.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MROKI_APP_GRAPHQL_CONFIG` | No | _(none)_ | Path to a YAML REST → GraphQL mapping file. When set, matching REST requests are sent to shadow as GraphQL queries and the responses are normalized back into the REST shape before diffing. |
+
+When the adapter is enabled:
+
+- Each request is matched against the mapping's routes (Go [`http.ServeMux` patterns](https://pkg.go.dev/net/http#hdr-Patterns), e.g. `GET /bookings/{id}`). A match is sent to shadow as `POST <endpoint>` with a JSON body `{"query": ..., "variables": ...}`; client headers are forwarded. Requests that match **no route are not shadowed**.
+- The GraphQL response is normalized: the object at `response.root` is extracted and each mapped GraphQL field is renamed to its REST field. A missing or `null` root becomes `null`.
+- **Only mapped fields are compared**, on both sides, and **only bodies are compared** (status codes and headers are left out, since GraphQL typically answers `200` even for errors). Diff options and redaction paths use the REST field names.
+- Only queries are accepted; `mutation` and `subscription` operations are rejected at startup. The base shadow rules still apply to the incoming REST request.
+
+```yaml
+endpoint: /graphql            # GraphQL path on the shadow URL
+routes:
+  - match: GET /bookings/{id} # method + http.ServeMux pattern
+    query: |
+      query GetBooking($id: ID!) {
+        booking(id: $id) { id guestName checkIn }
+      }
+    variables:
+      id: path.id             # value of {id}; only path parameters are supported
+    response:
+      root: data.booking      # dot path of the object to compare
+      fields:                 # REST field: GraphQL field (dot paths, relative to root)
+        id: id
+        guest_name: guestName
+        check_in: checkIn
+```
+
+Unknown keys are rejected so typos fail at startup. Array wildcards (`#`) are not supported yet. See the runnable [REST → GraphQL example](https://github.com/pedrobarco/mroki/tree/main/examples/rest-to-graphql).
+
 ---
 
 ## mroki-hub
