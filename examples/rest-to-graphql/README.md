@@ -27,6 +27,90 @@ Everything else matches once field names are mapped (`guest_name` ↔ `guestName
 - [`legacy/main.go`](legacy/main.go): stand-in for the legacy REST service
 - [`graphql/main.go`](graphql/main.go): stand-in for the new GraphQL service (answers only this example's query)
 
+## Run It From Scratch (Ubuntu on WSL)
+
+These steps start from a fresh Ubuntu on WSL with no Go installed. Every command can be copied and
+pasted as is.
+
+**1. Install Go 1.26.1** (once). This uses the official tarball for x86-64; on an ARM machine replace
+`amd64` with `arm64`.
+
+```bash
+sudo apt-get update && sudo apt-get install -y git curl ca-certificates
+curl -fsSLO https://go.dev/dl/go1.26.1.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.1.linux-amd64.tar.gz
+rm go1.26.1.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+go version
+```
+
+`go version` must print `go version go1.26.1 linux/amd64`.
+
+**2. Clone the repository** (once):
+
+```bash
+cd ~
+git clone https://github.com/Abrunacci/mroki.git
+cd ~/mroki
+go mod download
+```
+
+**3. Start the three processes**, each in its own terminal (in Windows Terminal, open a new Ubuntu
+tab for each one). Leave them running.
+
+Terminal 1, legacy REST service (live):
+
+```bash
+cd ~/mroki && go run ./examples/rest-to-graphql/legacy
+```
+
+It prints `legacy REST bookings service listening on :9001`.
+
+Terminal 2, new GraphQL service (shadow):
+
+```bash
+cd ~/mroki && go run ./examples/rest-to-graphql/graphql
+```
+
+It prints `GraphQL bookings service listening on :9002`.
+
+Terminal 3, mroki-proxy:
+
+```bash
+cd ~/mroki && \
+MROKI_APP_LIVE_URL=http://localhost:9001 \
+MROKI_APP_SHADOW_URL=http://localhost:9002 \
+MROKI_APP_GRAPHQL_CONFIG=examples/rest-to-graphql/mapping.yaml \
+go run ./cmd/mroki-proxy
+```
+
+It is ready when it prints `graphql shadow adapter configured` and `proxy server started address=:8080`.
+The first `go run` of each process compiles it, so it takes a little longer.
+
+**4. Request the booking** from a fourth terminal:
+
+```bash
+curl http://localhost:8080/bookings/1042
+```
+
+The response is the legacy one, unchanged:
+
+```json
+{"id":1042,"guest_name":"Ana Pérez","check_in":"2026-10-09","check_out":"2026-10-12","status":"confirmed","total_price":450.5,"legacy_code":"BK-1042"}
+```
+
+**5. Check terminal 3.** The proxy logs the GraphQL call, the REST call and the diff with the two
+deliberate differences (timestamps and request IDs will differ):
+
+```
+time=2026-10-08T03:00:59.219Z level=DEBUG msg="forwarding request" method=POST url=http://localhost:9002/graphql
+time=2026-10-08T03:00:59.219Z level=DEBUG msg="forwarding request" method=GET url=http://localhost:9001/bookings/1042
+time=2026-10-08T03:00:59.221Z level=INFO msg="response diff detected" request.id=0a5558ec-944a-48f2-a06d-566b30078fc8 request.method=GET request.path=/bookings/1042 live_status=200 shadow_status=200 changes=2 diff="  replace /body/check_in: \"2026-10-09T00:00:00Z\"\n  replace /body/id: \"1042\"\n"
+```
+
+Stop everything with `Ctrl+C` in each terminal. The sections below explain the output and more cases.
+
 ## Run It
 
 From the repository root, in three terminals:
