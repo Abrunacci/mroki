@@ -280,3 +280,60 @@ func TestCompare_redaction_never_leaks_headers(t *testing.T) {
 	assert.True(t, sawTrace, "non-redacted header diff should surface")
 	assertOpsFreeOfSecrets(t, result.Ops, "live-token", "shadow-token")
 }
+
+func TestCompare_with_body_normalizer(t *testing.T) {
+	redactor := traffictesting.NewRedactor([]string{"body.guest_name"})
+	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
+		// Stand-in for a GraphQL adapter: unwrap the shadow body into the REST shape.
+		return live, []byte(`{"id":"42","guest_name":"Bob"}`), nil
+	}
+	comparer := services.NewResponseComparer(redactor, nil, services.WithBodyNormalizer(normalize))
+
+	req := services.ResponseData{Body: []byte(`{}`)}
+	live := services.ResponseData{StatusCode: 200, Body: []byte(`{"id":42,"guest_name":"Alice"}`)}
+	shadow := services.ResponseData{StatusCode: 200, Body: []byte(`{"data":{"booking":{"id":"42","guestName":"Bob"}}}`)}
+
+	result, err := comparer.Compare(req, live, shadow)
+
+	require.NoError(t, err)
+	// Redaction applies to the normalized shadow body, so the REST field path
+	// hides the guest name on both sides and only the id type differs.
+	require.Len(t, result.Ops, 1)
+	assert.Equal(t, diff.PatchOp{Op: "replace", Path: "/body/id", Value: "42"}, result.Ops[0])
+	assertOpsFreeOfSecrets(t, result.Ops, "Alice", "Bob")
+}
+
+func TestCompare_body_normalizer_error_falls_back_to_original_bodies(t *testing.T) {
+	redactor := traffictesting.NewRedactor(nil)
+	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
+		return nil, nil, assert.AnError
+	}
+	comparer := services.NewResponseComparer(redactor, nil, services.WithBodyNormalizer(normalize))
+
+	req := services.ResponseData{Body: []byte(`{}`)}
+	live := services.ResponseData{StatusCode: 200, Body: []byte(`{"a":1}`)}
+	shadow := services.ResponseData{StatusCode: 200, Body: []byte(`{"a":2}`)}
+
+	result, err := comparer.Compare(req, live, shadow)
+
+	require.NoError(t, err)
+	require.Len(t, result.Ops, 1)
+	assert.Equal(t, "/body/a", result.Ops[0].Path)
+}
+
+func TestCompare_body_only_ignores_status_and_headers(t *testing.T) {
+	redactor := traffictesting.NewRedactor(nil)
+
+	req := services.ResponseData{Body: []byte(`{}`)}
+	live := services.ResponseData{StatusCode: 404, Headers: http.Header{"X-Legacy": {"1"}}, Body: []byte(`{"a":1}`)}
+	shadow := services.ResponseData{StatusCode: 200, Headers: http.Header{"X-New": {"1"}}, Body: []byte(`{"a":1}`)}
+
+	result, err := services.NewResponseComparer(redactor, nil, services.WithBodyOnly()).Compare(req, live, shadow)
+	require.NoError(t, err)
+	assert.Empty(t, result.Ops, "status and headers are left out of the diff")
+	assert.Equal(t, "1", result.Live.Headers.Get("X-Legacy"), "headers are still redacted and returned")
+
+	result, err = services.NewResponseComparer(redactor, nil).Compare(req, live, shadow)
+	require.NoError(t, err)
+	assert.NotEmpty(t, result.Ops, "without the option, status and headers are compared")
+}
