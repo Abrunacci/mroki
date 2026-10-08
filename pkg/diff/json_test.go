@@ -120,6 +120,19 @@ func TestJSON_IgnoredFields_StillDetectsDifferences(t *testing.T) {
 	assert.Equal(t, "/name", ops[0].Path)
 }
 
+func TestJSON_IgnoredFields_RepeatedOptionsAccumulate(t *testing.T) {
+	a := `{"name": "John", "timestamp": "2024-01-01T10:00:00Z", "request_id": "a"}`
+	b := `{"name": "John", "timestamp": "2024-01-01T11:00:00Z", "request_id": "b"}`
+
+	ops, err := diff.JSON(a, b,
+		diff.WithIgnoredFields("timestamp"),
+		diff.WithIgnoredFields("request_id"),
+	)
+
+	assert.NoError(t, err)
+	assert.Empty(t, ops, "fields from every WithIgnoredFields call should be ignored")
+}
+
 func TestJSON_IncludedFields(t *testing.T) {
 	a := `{"name": "John", "age": 30, "email": "john@example.com", "timestamp": "2024-01-01"}`
 	b := `{"name": "John", "age": 35, "email": "john@example.com", "timestamp": "2024-01-02"}`

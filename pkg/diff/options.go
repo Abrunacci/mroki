@@ -34,8 +34,9 @@ func WithIncludedFields(fields ...string) Option {
 	}
 }
 
-// WithIgnoredFields sets a blacklist of fields to exclude from comparison.
+// WithIgnoredFields adds fields to a blacklist excluded from comparison.
 // Uses gjson path syntax (e.g., "timestamp", "users.#.created_at").
+// Repeated calls accumulate: fields from every call are ignored.
 // Can be combined with WithIncludedFields for hybrid filtering.
 //
 // Example:
@@ -43,7 +44,7 @@ func WithIncludedFields(fields ...string) Option {
 //	diff.JSON(a, b, diff.WithIgnoredFields("timestamp", "request_id"))
 func WithIgnoredFields(fields ...string) Option {
 	return func(o *options) {
-		o.ignoredFields = fields
+		o.ignoredFields = append(o.ignoredFields, fields...)
 	}
 }
 
