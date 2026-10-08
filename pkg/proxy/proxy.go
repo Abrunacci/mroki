@@ -451,7 +451,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	shadowBody := body
 
 	if p.shadowRewriter != nil {
-		rewritten, err := p.shadowRewriter(r, body)
+		rewritten, err := p.rewriteShadow(r, body)
 		if err != nil {
 			// A request the rewriter cannot translate is simply not shadowed;
 			// live traffic is never affected.
@@ -644,6 +644,17 @@ func (p *Proxy) forwardRequest(ctx context.Context, original *http.Request, targ
 		slog.String("method", req.Method),
 		slog.String("url", req.URL.String()))
 	return p.client.Do(req)
+}
+
+// rewriteShadow runs the configured rewriter, turning a panic into an error so
+// a faulty rewriter skips shadow instead of failing the live request.
+func (p *Proxy) rewriteShadow(r *http.Request, body []byte) (sr ShadowRequest, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			err = fmt.Errorf("panic in shadow rewriter: %v", v)
+		}
+	}()
+	return p.shadowRewriter(r, body)
 }
 
 // applyShadowRewrite applies a rewritten shadow request onto the cloned shadow

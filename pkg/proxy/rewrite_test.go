@@ -111,6 +111,34 @@ func TestProxy_ServeHTTP_rewrites_shadow_request(t *testing.T) {
 	}
 }
 
+func TestProxy_ServeHTTP_skips_shadow_when_rewriter_panics(t *testing.T) {
+	liveServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer liveServer.Close()
+
+	var shadowCalls atomic.Int32
+	shadowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		shadowCalls.Add(1)
+	}))
+	defer shadowServer.Close()
+
+	liveURL, _ := url.Parse(liveServer.URL)
+	shadowURL, _ := url.Parse(shadowServer.URL)
+	p := proxy.NewProxy(liveURL, shadowURL,
+		proxy.WithShadowRequestRewriter(func(*http.Request, []byte) (proxy.ShadowRequest, error) {
+			panic("boom")
+		}),
+	)
+
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() { p.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil)) })
+	assert.Equal(t, http.StatusOK, rec.Code, "live traffic is unaffected")
+
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int32(0), shadowCalls.Load())
+}
+
 func TestProxy_ServeHTTP_skips_shadow_when_rewrite_fails(t *testing.T) {
 	liveServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
