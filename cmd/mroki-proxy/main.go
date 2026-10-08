@@ -23,6 +23,7 @@ import (
 	applog "github.com/pedrobarco/mroki/pkg/logger"
 	"github.com/pedrobarco/mroki/pkg/metrics"
 	"github.com/pedrobarco/mroki/pkg/proxy"
+	"github.com/pedrobarco/mroki/pkg/shadowadapter/graphql"
 )
 
 func main() {
@@ -217,6 +218,28 @@ func main() {
 		slog.Int("base_rules", len(baseShadowRules)),
 	)
 
+	// Optional REST → GraphQL adapter (standalone mode only; enforced by config
+	// validation). Loaded at startup so a bad mapping fails fast.
+	var shadowAdapter handlers.ShadowAdapter
+	if cfg.App.GraphQLConfig != "" {
+		gqlCfg, err := graphql.LoadConfig(cfg.App.GraphQLConfig)
+		if err != nil {
+			logger.Error("invalid GRAPHQL_CONFIG", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		adapter, err := graphql.New(gqlCfg)
+		if err != nil {
+			logger.Error("invalid GRAPHQL_CONFIG", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		shadowAdapter = adapter
+		logger.Info("graphql shadow adapter configured",
+			slog.String("file", cfg.App.GraphQLConfig),
+			slog.String("endpoint", gqlCfg.Endpoint),
+			slog.Int("routes", len(gqlCfg.Routes)),
+		)
+	}
+
 	// Configure proxy handler
 	// Configure sampling rate
 	samplingRate, err := proxy.NewSamplingRate(cfg.App.SamplingRate)
@@ -263,6 +286,7 @@ func main() {
 		APITimeout:          cfg.App.APITimeout, // overall deadline for API calls
 		DiffOptions:         diffOpts,           // Only used in standalone mode
 		Redactor:            redactor,           // Only used in standalone mode
+		ShadowAdapter:       shadowAdapter,      // nil unless GRAPHQL_CONFIG is set
 		Recorder:            recorder,           // shared domain comparison metrics; nil if disabled
 		InstrumentTransport: instrumentUpstream, // nil if metrics disabled
 	}

@@ -18,6 +18,15 @@ import (
 	"github.com/pedrobarco/mroki/pkg/proxy"
 )
 
+// ShadowAdapter makes a shadow service that speaks a different protocol than
+// live comparable with it: it rewrites each request sent to shadow and
+// normalizes both bodies into a common shape before diffing. It is satisfied
+// by *graphql.Adapter (pkg/shadowadapter/graphql).
+type ShadowAdapter interface {
+	RewriteRequest(r *http.Request, body []byte) (proxy.ShadowRequest, error)
+	Normalize(method, path string, live, shadow []byte) ([]byte, []byte, error)
+}
+
 type ProxyConfig struct {
 	Live          *url.URL
 	Shadow        *url.URL
@@ -47,6 +56,10 @@ type ProxyConfig struct {
 
 	// Redactor for standalone mode (redacts headers + body fields)
 	Redactor *traffictesting.Redactor
+
+	// ShadowAdapter optionally translates shadow requests and normalizes the
+	// responses (standalone mode only). When set, only bodies are compared.
+	ShadowAdapter ShadowAdapter
 
 	// Recorder records the shared domain comparison metrics from the standalone
 	// callback, where the proxy computes the diff itself. When nil, recording is
@@ -100,6 +113,12 @@ func Proxy(cfg ProxyConfig) http.HandlerFunc {
 
 	if len(checks) > 0 {
 		opts = append(opts, proxy.WithShouldProxyToShadow(checks...))
+	}
+
+	if cfg.ShadowAdapter != nil {
+		// Shadow speaks a different protocol: translate each request. Requests
+		// the adapter cannot translate are not shadowed.
+		opts = append(opts, proxy.WithShadowRequestRewriter(cfg.ShadowAdapter.RewriteRequest))
 	}
 
 	if cfg.APIClient != nil {
@@ -176,6 +195,11 @@ func createStandaloneCallback(cfg ProxyConfig) proxy.CallbackFunc {
 
 	differ := proxy.NewProxyResponseDiffer(cfg.DiffOptions...)
 	redactor := cfg.Redactor
+	if redactor == nil && cfg.ShadowAdapter != nil {
+		// Normalization runs inside the ResponseComparer, which needs a
+		// redactor; an empty one redacts nothing.
+		redactor = traffictesting.NewRedactor(nil)
+	}
 
 	return func(req proxy.ProxyRequest, live, shadow proxy.ProxyResponse) error {
 		reqLogger := logger.With(
@@ -186,7 +210,7 @@ func createStandaloneCallback(cfg ProxyConfig) proxy.CallbackFunc {
 
 		// Optimized path: redact + diff via ResponseComparer
 		if redactor != nil {
-			comparer := services.NewResponseComparer(redactor, cfg.DiffOptions)
+			comparer := services.NewResponseComparer(redactor, cfg.DiffOptions, comparerOptions(cfg.ShadowAdapter, req, reqLogger)...)
 			result, err := comparer.Compare(
 				services.ResponseData{Headers: req.Headers, Body: req.Body},
 				services.ResponseData{StatusCode: live.StatusCode, Headers: live.Response.Header, Body: live.Body},
@@ -226,6 +250,24 @@ func createStandaloneCallback(cfg ProxyConfig) proxy.CallbackFunc {
 		logDiffResult(reqLogger, live, shadow, ops)
 		return nil
 	}
+}
+
+// comparerOptions returns the ResponseComparer options for a shadow adapter:
+// bodies are normalized for the request's route and only bodies are compared,
+// since status codes and headers differ by protocol. A normalization failure
+// is logged and the original bodies are compared instead.
+func comparerOptions(adapter ShadowAdapter, req proxy.ProxyRequest, logger *slog.Logger) []services.ComparerOption {
+	if adapter == nil {
+		return nil
+	}
+	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
+		l, s, err := adapter.Normalize(req.Method, req.Path, live, shadow)
+		if err != nil {
+			logger.Warn("failed to normalize shadow response, comparing raw bodies", slog.String("error", err.Error()))
+		}
+		return l, s, err
+	}
+	return []services.ComparerOption{services.WithBodyNormalizer(normalize), services.WithBodyOnly()}
 }
 
 // logDiffResult logs the diff outcome and prints the ops if any.

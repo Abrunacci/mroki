@@ -84,6 +84,12 @@ type Config config.Config[struct {
 
 	// Redacted fields (optional, gjson paths — adds to default redacted list)
 	RedactedFields []string `env:"REDACTED_FIELDS"` // Comma-separated, e.g. "headers.X-Internal-Token"
+
+	// GraphQLConfig is the path to a REST → GraphQL mapping file (optional,
+	// standalone mode only). When set, matching REST requests are translated
+	// into GraphQL queries for shadow and the responses are normalized back
+	// into the REST shape before diffing.
+	GraphQLConfig string `env:"GRAPHQL_CONFIG"`
 }]
 
 // Validate checks all configuration values and returns a ValidationError
@@ -165,6 +171,12 @@ func (c Config) Validate() error {
 		if c.App.ShadowURL.Scheme != "http" && c.App.ShadowURL.Scheme != "https" {
 			verr.Add(config.SeverityError, fmt.Sprintf("shadow_url must use http or https scheme, got %q", c.App.ShadowURL.Scheme))
 		}
+	}
+
+	// The GraphQL adapter normalizes responses in the standalone callback only;
+	// in API mode the diff is computed server-side without it.
+	if hasAPIConfig && c.App.GraphQLConfig != "" {
+		verr.Add(config.SeverityError, "graphql_config is only supported in standalone mode (LIVE_URL+SHADOW_URL)")
 	}
 
 	// Validate timeouts (both modes)
