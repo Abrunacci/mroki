@@ -934,6 +934,7 @@ A paginated list of request summaries.
          "path": "/api/users/123",
          "raw_query": "page=2\u0026limit=10",
          "shadow_adapter": {
+            "conversions": [],
             "type": "graphql",
             "version": "3f2a9c41d07b"
          },
@@ -1174,6 +1175,14 @@ The created request summary.
       "path": "/api/users/123",
       "raw_query": "page=2\u0026limit=10",
       "shadow_adapter": {
+         "conversions": [
+            {
+               "as": "number",
+               "error": "\"Qm9va2luZzoxMDQ0\" is not a number",
+               "field": "id",
+               "original": "1042"
+            }
+         ],
          "type": "graphql",
          "version": "3f2a9c41d07b"
       },
@@ -1316,6 +1325,7 @@ The requested request detail.
             }
          ],
          "shadow_adapter": {
+            "conversions": [],
             "type": "graphql",
             "version": "3f2a9c41d07b"
          }

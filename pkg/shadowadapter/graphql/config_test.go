@@ -38,7 +38,7 @@ func TestParseConfig_valid(t *testing.T) {
 	assert.Contains(t, r.Query, "booking(id: $id)")
 	assert.Equal(t, map[string]string{"id": "path.id"}, r.Variables)
 	assert.Equal(t, "data.booking", r.Response.Root)
-	assert.Equal(t, map[string]string{"id": "id", "guest_name": "guestName"}, r.Response.Fields)
+	assert.Equal(t, map[string]graphql.FieldMapping{"id": {From: "id"}, "guest_name": {From: "guestName"}}, r.Response.Fields)
 }
 
 func TestParseConfig_invalid(t *testing.T) {
@@ -157,7 +157,7 @@ func TestParseConfig_query_operation_detection(t *testing.T) {
 				Routes: []graphql.RouteConfig{{
 					Match:    "GET /a",
 					Query:    tt.query,
-					Response: graphql.ResponseConfig{Root: "data.a", Fields: map[string]string{"a": "a"}},
+					Response: graphql.ResponseConfig{Root: "data.a", Fields: map[string]graphql.FieldMapping{"a": {From: "a"}}},
 				}},
 			}
 			assert.NoError(t, cfg.Validate())

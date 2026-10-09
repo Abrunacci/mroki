@@ -138,8 +138,25 @@ func TestToFullRequestResponseDTO_DiffShadowAdapter(t *testing.T) {
 	req := &traffictesting.Request{
 		Diff: traffictesting.Diff{ShadowAdapter: traffictesting.ShadowAdapterSnapshot{Type: "graphql", Version: "0123456789ab"}},
 	}
-	assert.Equal(t, &dto.DiffShadowAdapter{Type: "graphql", Version: "0123456789ab"}, toFullRequestResponseDTO(req).Diff.ShadowAdapter)
-	assert.Equal(t, &dto.DiffShadowAdapter{Type: "graphql", Version: "0123456789ab"}, toRequestResponseDTO(req).ShadowAdapter)
+	assert.Equal(t, &dto.DiffShadowAdapter{Type: "graphql", Version: "0123456789ab", Conversions: []dto.FieldConversion{}}, toFullRequestResponseDTO(req).Diff.ShadowAdapter)
+	assert.Equal(t, &dto.DiffShadowAdapter{Type: "graphql", Version: "0123456789ab", Conversions: []dto.FieldConversion{}}, toRequestResponseDTO(req).ShadowAdapter)
+
+	req.Diff.Conversions = []traffictesting.FieldConversion{
+		{Field: "id", As: "number", Original: json.RawMessage(`"1042"`)},
+		{Field: "check_in", As: "date", Original: json.RawMessage(`"2026-10-09T15:30:00Z"`), Error: "not at midnight"},
+	}
+	wantConversions := []dto.FieldConversion{
+		{Field: "id", As: "number", Original: json.RawMessage(`"1042"`)},
+		{Field: "check_in", As: "date", Original: json.RawMessage(`"2026-10-09T15:30:00Z"`), Error: "not at midnight"},
+	}
+	assert.Equal(t, wantConversions, toFullRequestResponseDTO(req).Diff.ShadowAdapter.Conversions)
+	assert.Equal(t, wantConversions, toRequestResponseDTO(req).ShadowAdapter.Conversions)
+	body, err := json.Marshal(toRequestResponseDTO(req).ShadowAdapter)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"graphql","version":"0123456789ab","conversions":[
+		{"field":"id","as":"number","original":"1042"},
+		{"field":"check_in","as":"date","original":"2026-10-09T15:30:00Z","error":"not at midnight"}
+	]}`, string(body))
 
 	req.Diff.ShadowAdapter = traffictesting.ShadowAdapterSnapshot{}
 	assert.Nil(t, toFullRequestResponseDTO(req).Diff.ShadowAdapter)

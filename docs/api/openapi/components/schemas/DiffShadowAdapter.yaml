@@ -7,6 +7,7 @@ additionalProperties: false
 required:
   - type
   - version
+  - conversions
 properties:
   type:
     type: string
@@ -16,3 +17,10 @@ properties:
     type: string
     description: Version of the gate's mapping at computation time.
     example: "3f2a9c41d07b"
+  conversions:
+    type: array
+    description: |
+      Type conversions declared in the mapping and applied to the shadow body
+      before diffing, in field order. Empty when none applied.
+    items:
+      $ref: "./FieldConversion.yaml"

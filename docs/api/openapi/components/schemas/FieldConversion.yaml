@@ -1,0 +1,36 @@
+type: object
+title: FieldConversion
+description: |
+  A type conversion declared in the gate's mapping (`as:` on a response field)
+  and applied to the shadow value of one body field before diffing. The
+  normalized shadow body holds the converted value; `original` holds the value
+  as the shadow service sent it. A conversion that failed leaves the original
+  value in the body, so it shows up in the diff.
+additionalProperties: false
+required:
+  - field
+  - as
+  - original
+properties:
+  field:
+    type: string
+    description: Body field path (dot-separated) in the live (REST) shape.
+    example: "id"
+  as:
+    type: string
+    description: Type the shadow value was converted to.
+    enum:
+      - number
+      - string
+      - boolean
+      - date
+    example: "number"
+  original:
+    description: |
+      The shadow value as received, before conversion. May be any JSON type.
+      `"[REDACTED]"` when the field is redacted.
+    example: "1042"
+  error:
+    type: string
+    description: Why the value could not be converted. Omitted when it was converted.
+    example: "\"Qm9va2luZzoxMDQ0\" is not a number"

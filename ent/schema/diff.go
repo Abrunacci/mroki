@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"time"
 
 	"entgo.io/ent"
@@ -25,10 +26,20 @@ type DiffConfigSnapshot struct {
 }
 
 // ShadowAdapterSnapshot identifies a shadow adapter mapping by type and
-// content version.
+// content version, and records the declared field conversions it applied.
 type ShadowAdapterSnapshot struct {
-	Type    string `json:"type"`
-	Version string `json:"version"`
+	Type        string                    `json:"type"`
+	Version     string                    `json:"version"`
+	Conversions []FieldConversionSnapshot `json:"conversions,omitempty"`
+}
+
+// FieldConversionSnapshot records a declared type conversion applied to one
+// field of the shadow body before diffing.
+type FieldConversionSnapshot struct {
+	Field    string          `json:"field"`
+	As       string          `json:"as"`
+	Original json.RawMessage `json:"original"`
+	Error    string          `json:"error,omitempty"`
 }
 
 // Diff holds the schema definition for the Diff entity.

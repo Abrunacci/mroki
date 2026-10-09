@@ -16,6 +16,7 @@ import (
 	"github.com/pedrobarco/mroki/pkg/diff"
 	diffmetrics "github.com/pedrobarco/mroki/pkg/diff/metrics"
 	"github.com/pedrobarco/mroki/pkg/proxy"
+	"github.com/pedrobarco/mroki/pkg/shadowadapter/graphql"
 )
 
 // ShadowAdapter makes a shadow service that speaks a different protocol than
@@ -24,7 +25,7 @@ import (
 // by *graphql.Adapter (pkg/shadowadapter/graphql).
 type ShadowAdapter interface {
 	RewriteRequest(r *http.Request, body []byte) (proxy.ShadowRequest, error)
-	Normalize(method, path string, live, shadow []byte) ([]byte, []byte, error)
+	Normalize(method, path string, live, shadow []byte) (graphql.Normalized, error)
 }
 
 type ProxyConfig struct {
@@ -232,6 +233,7 @@ func createStandaloneCallback(cfg ProxyConfig) proxy.CallbackFunc {
 			shadow.Body = result.Shadow.Body
 
 			cfg.Recorder.Observe(context.Background(), "", result.Ops, nil)
+			logConversions(reqLogger, result.Conversions)
 			logDiffResult(reqLogger, live, shadow, result.Ops)
 			return nil
 		}
@@ -263,6 +265,23 @@ func comparerOptions(adapter ShadowAdapter, req proxy.ProxyRequest, logger *slog
 	return services.ShadowAdapterOptions(adapter, req.Method, req.Path, func(err error) {
 		logger.Warn("failed to normalize shadow response, comparing raw bodies", slog.String("error", err.Error()))
 	})
+}
+
+// logConversions logs the declared field conversions applied to the shadow
+// body: a failed one is a difference, so it is logged as a warning.
+func logConversions(logger *slog.Logger, conversions []traffictesting.FieldConversion) {
+	for _, c := range conversions {
+		attrs := []any{
+			slog.String("field", c.Field),
+			slog.String("as", c.As),
+			slog.String("original", string(c.Original)),
+		}
+		if c.OK() {
+			logger.Debug("field compared with a declared conversion", attrs...)
+			continue
+		}
+		logger.Warn("declared conversion failed, comparing the original value", append(attrs, slog.String("error", c.Error))...)
+	}
 }
 
 // logDiffResult logs the diff outcome and prints the ops if any.

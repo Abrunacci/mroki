@@ -37,6 +37,7 @@ type route struct {
 type fieldMapping struct {
 	rest    string
 	graphql string
+	as      ConversionType
 }
 
 // graphQLRequest is the JSON body of a GraphQL-over-HTTP POST request.
@@ -72,8 +73,8 @@ func (a *Adapter) register(rc RouteConfig) (err error) {
 	for name, source := range rc.Variables {
 		r.variables[name] = strings.TrimPrefix(source, pathVariablePrefix)
 	}
-	for rest, gql := range rc.Response.Fields {
-		r.fields = append(r.fields, fieldMapping{rest: rest, graphql: gql})
+	for rest, f := range rc.Response.Fields {
+		r.fields = append(r.fields, fieldMapping{rest: rest, graphql: f.From, as: f.As})
 	}
 	sort.Slice(r.fields, func(i, j int) bool { return r.fields[i].rest < r.fields[j].rest })
 
@@ -122,29 +123,41 @@ func (a *Adapter) RewriteRequest(r *http.Request, _ []byte) (proxy.ShadowRequest
 	}, nil
 }
 
+// Normalized holds a live and a shadow body in a comparable shape, and the
+// declared conversions applied to the shadow body.
+type Normalized struct {
+	Live   []byte
+	Shadow []byte
+	// Conversions lists, in REST field order, each mapped field with a
+	// declared type whose GraphQL value was present and not null.
+	Conversions []Conversion
+}
+
 // Normalize makes a live REST body and a shadow GraphQL body comparable for
 // the route matching method and path:
 //
 //   - shadow: the object at the route's root is extracted and each mapped
-//     GraphQL field is moved to its REST name. A missing or null root becomes
-//     JSON null, so the difference still shows up in the diff.
+//     GraphQL field is moved to its REST name, converted to its declared type
+//     if it has one. A missing or null root becomes JSON null, so the
+//     difference still shows up in the diff. A value that cannot be converted
+//     is kept as received, so it shows up as a difference too.
 //   - live: only the mapped REST fields are kept, so unmapped fields don't
 //     produce noise.
 //
 // It returns ErrNoRoute when no route matches, and an error when either body is
 // not valid JSON. Callers should then compare the original bodies.
-func (a *Adapter) Normalize(method, path string, live, shadow []byte) ([]byte, []byte, error) {
+func (a *Adapter) Normalize(method, path string, live, shadow []byte) (Normalized, error) {
 	m, ok := a.match(method, path)
 	if !ok {
-		return nil, nil, fmt.Errorf("%w: %s %s", ErrNoRoute, method, path)
+		return Normalized{}, fmt.Errorf("%w: %s %s", ErrNoRoute, method, path)
 	}
 
 	var liveTree, shadowTree jsontree.Tree
 	if err := json.Unmarshal(live, &liveTree); err != nil {
-		return nil, nil, fmt.Errorf("live body is not valid JSON: %w", err)
+		return Normalized{}, fmt.Errorf("live body is not valid JSON: %w", err)
 	}
 	if err := json.Unmarshal(shadow, &shadowTree); err != nil {
-		return nil, nil, fmt.Errorf("shadow body is not valid JSON: %w", err)
+		return Normalized{}, fmt.Errorf("shadow body is not valid JSON: %w", err)
 	}
 
 	restPaths := make([]string, len(m.route.fields))
@@ -153,29 +166,43 @@ func (a *Adapter) Normalize(method, path string, live, shadow []byte) ([]byte, [
 	}
 	liveOut, err := json.Marshal(jsontree.PickPaths(liveTree, restPaths))
 	if err != nil {
-		return nil, nil, fmt.Errorf("encode normalized live body: %w", err)
+		return Normalized{}, fmt.Errorf("encode normalized live body: %w", err)
 	}
 
-	shadowOut, err := json.Marshal(m.route.normalizeShadow(shadowTree))
+	shadowNorm, conversions := m.route.normalizeShadow(shadowTree)
+	shadowOut, err := json.Marshal(shadowNorm)
 	if err != nil {
-		return nil, nil, fmt.Errorf("encode normalized shadow body: %w", err)
+		return Normalized{}, fmt.Errorf("encode normalized shadow body: %w", err)
 	}
-	return liveOut, shadowOut, nil
+	return Normalized{Live: liveOut, Shadow: shadowOut, Conversions: conversions}, nil
 }
 
-// normalizeShadow extracts the root object and renames its fields to REST names.
-func (r *route) normalizeShadow(tree jsontree.Tree) jsontree.Tree {
+// normalizeShadow extracts the root object, renames its fields to REST names
+// and applies the declared conversions, which it returns.
+func (r *route) normalizeShadow(tree jsontree.Tree) (jsontree.Tree, []Conversion) {
 	root, ok := lookup(tree, r.root)
 	if !ok || root == nil {
-		return nil
+		return nil, nil
 	}
 	out := make(map[string]any, len(r.fields))
+	var conversions []Conversion
 	for _, f := range r.fields {
-		if v, ok := lookup(root, f.graphql); ok {
-			setPath(out, strings.Split(f.rest, "."), v)
+		v, ok := lookup(root, f.graphql)
+		if !ok {
+			continue
 		}
+		if f.as != "" && v != nil {
+			c := Conversion{Field: f.rest, As: f.as, Original: v}
+			if converted, err := f.as.convert(v); err != nil {
+				c.Error = err.Error()
+			} else {
+				v = converted
+			}
+			conversions = append(conversions, c)
+		}
+		setPath(out, strings.Split(f.rest, "."), v)
 	}
-	return out
+	return out, conversions
 }
 
 // lookup returns the value at a dot-separated path and whether it exists.
