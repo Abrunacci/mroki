@@ -27,6 +27,7 @@ type booking struct {
 var bookings = map[string]booking{
 	"1042": {ID: 1042, GuestName: "Ana Pérez", CheckIn: "2026-10-09", CheckOut: "2026-10-12", Status: "confirmed", TotalPrice: 450.5, LegacyCode: "BK-1042"},
 	"1043": {ID: 1043, GuestName: "Luis Gómez", CheckIn: "2026-11-02", CheckOut: "2026-11-04", Status: "cancelled", TotalPrice: 180, LegacyCode: "BK-1043"},
+	"1044": {ID: 1044, GuestName: "Marta Ruiz", CheckIn: "2026-12-20", CheckOut: "2026-12-23", Status: "confirmed", TotalPrice: 320, LegacyCode: "BK-1044"},
 }
 
 func main() {

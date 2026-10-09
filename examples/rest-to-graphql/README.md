@@ -15,15 +15,22 @@ client ── GET /bookings/1042 ──► mroki-proxy ──► legacy REST (li
                                           (normalized with the gate's mapping, then diffed)
 ```
 
-The two services in this directory return the same bookings, with two deliberate differences:
+The two services in this directory return the same bookings, with deliberate differences:
 
-| Field | Legacy REST | New GraphQL |
-|---|---|---|
-| `id` | `1042` (number) | `"1042"` (string, GraphQL `ID`) |
-| `check_in` / `checkIn` | `"2026-10-09"` | `"2026-10-09T00:00:00Z"` |
+| Field | Legacy REST | New GraphQL | In the comparison |
+|---|---|---|---|
+| `id` | `1042` (number) | `"1042"` (string, GraphQL `ID`) | accepted: compared as a number |
+| `check_in` / `checkIn` | `"2026-10-09"` | `"2026-10-09T00:00:00Z"` | accepted: compared as a date |
+| `total_price` / `totalPrice` (booking 1042) | `450.5` | `405.5` | a real difference |
+| `id` (booking 1044) | `1044` | `"Qm9va2luZzoxMDQ0"` | a real difference: not a number |
 
 Everything else matches once field names are mapped (`guest_name` ↔ `guestName`, …). The legacy-only
 `legacy_code` field is not in the mapping, so it is left out of the comparison.
+
+The type differences are known and accepted, so the mapping declares a **conversion** for those two
+fields (`as: number`, `as: date`). The value is still compared after converting it: if GraphQL sent
+another id, or an id that is not a number, it would show up as a difference. See
+[Field Conversions](#field-conversions) below.
 
 ## Files
 
@@ -63,47 +70,60 @@ Leave this terminal running. If a port is already in use, see [Ports](#ports) be
 **REST → GraphQL**, with 3 requests in the last 24 hours.
 
 **3. Open the gate.** Next to its name, the badge shows the mapping version (a short hash of
-`mapping.yaml`). Below are the three requests the example sent: `/bookings/1042` and `/bookings/1043`
-(both found in both systems) and `/bookings/9999` (found in neither). All three are marked **Diff**.
+`mapping.yaml`). Below are the three requests the example sent:
 
-**4. Open `GET /bookings/1042`.** This is the comparison:
+- `/bookings/1042`: **Diff**, with a **2 conversions** mark.
+- `/bookings/1043`: **No diff**, with a **2 conversions** mark: the only differences were the two
+  accepted types, and the mark tells you a declared rule was applied.
+- `/bookings/9999`: **Diff** (found in neither system).
+
+**4. Open `GET /bookings/1043`.** This is a comparison where only accepted differences existed:
 
 - A note says **REST → GraphQL · body only**: the GraphQL response was normalized to the REST shape
   with the mapping version shown, and only the mapped body fields were compared.
-- Live (REST) on the left, shadow (GraphQL, already in the REST shape) on the right.
-- Two lines are marked: `id` (`1042` vs `"1042"`) and `check_in` (`"2026-10-09"` vs
-  `"2026-10-09T00:00:00Z"`). Field names do not show up as differences, and neither does
-  `legacy_code`, which is not in the mapping.
+- The same note lists the **2 fields compared with a type conversion**: `id as number · sent "1043"`
+  and `check_in as date · sent "2026-11-02T00:00:00Z"`.
+- Live (REST) on the left, shadow (GraphQL, already in the REST shape) on the right. On the shadow
+  side, `id` and `check_in` carry the same note next to the value, so you see the converted value
+  and what GraphQL actually sent without hovering.
 - Live and shadow status codes are shown as **(not compared)**: GraphQL answers `200` even for errors.
 
-**5. Open `GET /bookings/9999`.** REST answered `404` and GraphQL answered `200` with a `null`
+**5. Open `GET /bookings/1042`.** The conversions accept the type differences, but not the value
+difference: `total_price` is marked (`450.5` vs `405.5`). A conversion never hides a different value.
+
+**6. Open `GET /bookings/9999`.** REST answered `404` and GraphQL answered `200` with a `null`
 booking. The body difference is what is marked: `{}` on the live side (the error body has none of the
 mapped fields) against `null` on the shadow side.
 
-**6. Open the gate's Settings.** The **Shadow Adapter** section shows the mapping exactly as in
-`mapping.yaml`. It is read-only in the hub; it is changed through the API (step 8).
-
-**7. Send more traffic** from another terminal, then reload the gate:
+**7. See a conversion fail.** Booking 1044 exists in both systems, but GraphQL returns a Relay-style
+global ID that is not a number. Send it from another terminal and reload the gate:
 
 ```bash
-curl http://localhost:8080/bookings/1042
+curl http://localhost:8080/bookings/1044
 ```
 
-The client always gets the legacy REST response, unchanged.
+The client gets the legacy REST response, unchanged. In the hub, the request is marked **Diff** and
+**Conversion failed**. Its detail shows `id` as a difference (`1044` vs `"Qm9va2luZzoxMDQ0"`) with the
+note `as number failed: "Qm9va2luZzoxMDQ0" is not a number` in red.
 
-**8. Change the mapping and see the versions.** Edit `mapping.yaml`, for example comment out the last
-line (`# total_price: totalPrice`), and recreate the setup, the proxy and the traffic:
+**8. Open the gate's Settings.** The **Shadow Adapter** section shows the mapping exactly as in
+`mapping.yaml`, conversions included. It is read-only in the hub; it is changed through the API
+(step 9).
+
+**9. Change the mapping and see the versions.** Edit `mapping.yaml` and remove the `id` conversion,
+so the line reads `id: id`. Then recreate the setup, the proxy and the traffic:
 
 ```bash
 docker compose -f examples/rest-to-graphql/compose.yaml up -d --force-recreate gate-setup mroki-proxy traffic
 ```
 
-The gate keeps its requests and gets the new mapping, so the badge shows a new version. The earlier
-requests are marked **Other mapping** in the list, and their detail warns that they were compared
-with a different mapping than the gate's current one. Undo the edit and run the command again to go
-back.
+The gate keeps its requests and gets the new mapping, so the badge shows a new version. The new
+`/bookings/1043` is now marked **Diff**: without the conversion, `1043` vs `"1043"` is a type
+difference again. The earlier requests are marked **Other mapping** in the list, and their detail
+warns that they were compared with a different mapping than the gate's current one. Undo the edit
+and run the command again to go back.
 
-**9. Stop everything** with `Ctrl+C`, then remove the containers and the data:
+**10. Stop everything** with `Ctrl+C`, then remove the containers and the data:
 
 ```bash
 docker compose -f examples/rest-to-graphql/compose.yaml down -v
@@ -297,29 +317,68 @@ At startup the proxy confirms the mapping was loaded:
 level=INFO msg="graphql shadow adapter configured" file=examples/rest-to-graphql/mapping.yaml endpoint=/graphql routes=1
 ```
 
-For `GET /bookings/1042`, the proxy calls the GraphQL service and logs the two deliberate differences
-as JSON Patch operations (the value shown is the shadow's):
+For `GET /bookings/1042`, the proxy calls the GraphQL service, converts `id` and `check_in` as the
+mapping declares, and logs the one real difference as a JSON Patch operation (the value shown is the
+shadow's):
 
 ```
 level=DEBUG msg="forwarding request" method=POST url=http://localhost:9002/graphql
 level=DEBUG msg="forwarding request" method=GET url=http://localhost:9001/bookings/1042
-level=INFO msg="response diff detected" request.method=GET request.path=/bookings/1042 live_status=200 shadow_status=200 changes=2 diff="  replace /body/check_in: \"2026-10-09T00:00:00Z\"\n  replace /body/id: \"1042\"\n"
+level=DEBUG msg="field compared with a declared conversion" request.path=/bookings/1042 field=check_in as=date original="\"2026-10-09T00:00:00Z\""
+level=DEBUG msg="field compared with a declared conversion" request.path=/bookings/1042 field=id as=number original="\"1042\""
+level=INFO msg="response diff detected" request.method=GET request.path=/bookings/1042 live_status=200 shadow_status=200 changes=1 diff="  replace /body/total_price: 405.5\n"
 ```
 
 Status codes and headers are not compared, because GraphQL usually answers `200` even for errors.
 
-Two more cases worth trying:
+More cases worth trying:
 
+- `curl http://localhost:8080/bookings/1043`: only accepted type differences, so the proxy logs
+  `responses match` (at debug level, after the two conversions).
+- `curl http://localhost:8080/bookings/1044`: the GraphQL id is not a number, so the conversion fails
+  with a warning (`declared conversion failed, comparing the original value`) and the diff shows
+  `replace /body/id: "Qm9va2luZzoxMDQ0"`.
 - `curl http://localhost:8080/bookings/9999`: REST answers `404` with an error body, GraphQL answers
   `{"data":{"booking":null}}`. The normalized shadow body is `null`, so the diff shows `replace /body`.
 - `curl http://localhost:8080/guests/7`: no route in the mapping, so the request goes to live only
   (`skipping shadow proxy: rewrite failed` at debug level).
 
+## Field Conversions
+
+A field in `response.fields` is either the GraphQL field name (`guest_name: guestName`) or an object
+that also says what type the GraphQL value is compared as:
+
+```yaml
+fields:
+  id: { from: id, as: number }
+  check_in: { from: checkIn, as: date }
+```
+
+Only the GraphQL value is converted; the REST response is the reference and stays as it is. The
+value is still compared after converting it, so a different value is still a difference. A value
+that cannot be converted keeps its original form and shows up as a difference, marked **conversion
+failed** in the hub. `null` and missing fields are not converted: they are compared as they are.
+
+| `as` | Converts | Fails on |
+|---|---|---|
+| `number` | text written as a JSON number: `"1042"`, `"450.50"`, `"-3e2"` | spaces, `+`, leading zeros (`"007"`), thousands separators, hexadecimal, empty text, booleans |
+| `string` | a number or boolean to text: `1042` → `"1042"`, `true` → `"true"` | objects and arrays |
+| `boolean` | `"true"`, `"t"`, `"1"`, `"s"`, `"si"`, `"sí"`, `"y"`, `"yes"` → `true`; `"false"`, `"f"`, `"0"`, `"n"`, `"no"` → `false` (any case); the numbers `1` and `0` | any other text or number, and text with spaces around it |
+| `date` | `"2026-10-09"`; a date-time at exactly midnight in UTC (`"2026-10-09T00:00:00Z"`) or without a zone (`"2026-10-09T00:00:00"`) → `"2026-10-09"` | any other time, any other offset (`-03:00`, even `+00:00`), other formats (`"09/10/2026"`), invalid dates |
+
+A date-time with an offset fails on purpose: a date shifted by a time zone is a difference worth
+seeing. Numbers are compared as 64-bit floats, like every number in mroki, so ids above 2^53 lose
+precision.
+
+Adding or removing a conversion changes the mapping, so it gets a new mapping version (step 9 of the
+guide). A typo (`as: numbr`, `form: id`) is rejected when the gate is saved, and when the proxy
+starts in standalone mode, with the field and the reason in the error.
+
 ## Limitations
 
-This version supports path parameters as variables, a single root object, and renamed fields
-(including nested ones such as `dates.check_in: stay.checkIn`). Not yet supported: variables from the
-query string, headers or body; arrays; type coercion (so `id` differs on every booking, number vs
-string); GraphQL `errors` mapped to status codes; editing the mapping in the hub; and the Caddy
-module. See [Configuration](../../docs/production/CONFIGURATION.md#graphql-shadow-adapter) for the
-mapping reference.
+This version supports path parameters as variables, a single root object, renamed fields (including
+nested ones such as `dates.check_in: stay.checkIn`), and type conversions of GraphQL values. Not yet
+supported: variables from the query string, headers or body; arrays; conversions on the live side;
+GraphQL `errors` mapped to status codes; editing the mapping in the hub; and the Caddy module. See
+[Configuration](../../docs/production/CONFIGURATION.md#graphql-shadow-adapter) for the mapping
+reference.

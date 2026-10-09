@@ -2,6 +2,11 @@
 # Each route says which GraphQL query replaces a REST endpoint, where its
 # variables come from, and how to bring the GraphQL response back to the REST
 # shape. Only the fields listed under response.fields are compared.
+#
+# A field is either the GraphQL field name or {from: <field>, as: <type>}.
+# "as" converts the GraphQL value before comparing, so a known type difference
+# is accepted while the value is still compared. Types: number, string,
+# boolean, date. A value that cannot be converted is a difference.
 endpoint: /graphql
 
 routes:
@@ -22,9 +27,9 @@ routes:
     response:
       root: data.booking   # GraphQL wraps the result in data.<field>
       fields:              # REST field: GraphQL field (relative to root)
-        id: id
+        id: { from: id, as: number }          # GraphQL ID "1042" vs REST 1042
         guest_name: guestName
-        check_in: checkIn
+        check_in: { from: checkIn, as: date } # "2026-10-09T00:00:00Z" vs "2026-10-09"
         check_out: checkOut
         status: status
         total_price: totalPrice

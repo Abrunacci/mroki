@@ -203,6 +203,7 @@ When the adapter is enabled:
 
 - Each request is matched against the mapping's routes (Go [`http.ServeMux` patterns](https://pkg.go.dev/net/http#hdr-Patterns), e.g. `GET /bookings/{id}`). A match is sent to shadow as `POST <endpoint>` with a JSON body `{"query": ..., "variables": ...}`; client headers are forwarded. Requests that match **no route are not shadowed**.
 - The GraphQL response is normalized: the object at `response.root` is extracted and each mapped GraphQL field is renamed to its REST field. A missing or `null` root becomes `null`.
+- A field can declare a **type conversion** (`{from: <field>, as: <type>}`, with `number`, `string`, `boolean` or `date`): the GraphQL value is converted before comparing, so a known type difference is accepted while the value is still compared. A value that cannot be converted keeps its original form and is reported as a difference. `null` and missing values are not converted. Each diff records the conversions applied, with the value the shadow sent, and the hub shows them next to each converted field. The accepted values of each type are listed in the [example's README](https://github.com/pedrobarco/mroki/tree/main/examples/rest-to-graphql#field-conversions).
 - **Only mapped fields are compared**, on both sides, and **only bodies are compared** (status codes and headers are left out, since GraphQL typically answers `200` even for errors). Diff options and redaction paths use the REST field names.
 - Only queries are accepted; `mutation` and `subscription` operations are rejected (at startup, or when the gate is saved in API mode). The base shadow rules still apply to the incoming REST request.
 
@@ -219,12 +220,12 @@ routes:
     response:
       root: data.booking      # dot path of the object to compare
       fields:                 # REST field: GraphQL field (dot paths, relative to root)
-        id: id
+        id: { from: id, as: number }          # compare the GraphQL ID "1042" as a number
         guest_name: guestName
-        check_in: checkIn
+        check_in: { from: checkIn, as: date } # "2026-10-09T00:00:00Z" compared as "2026-10-09"
 ```
 
-Unknown keys are rejected so typos fail at startup. Array wildcards (`#`) are not supported yet. See the runnable [REST → GraphQL example](https://github.com/pedrobarco/mroki/tree/main/examples/rest-to-graphql).
+Unknown keys and unsupported `as` types are rejected so typos fail at startup (or when the gate is saved). Array wildcards (`#`) are not supported yet. See the runnable [REST → GraphQL example](https://github.com/pedrobarco/mroki/tree/main/examples/rest-to-graphql).
 
 ---
 
