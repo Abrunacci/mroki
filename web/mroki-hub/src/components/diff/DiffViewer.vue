@@ -369,10 +369,12 @@ function tokenClass(token: Token): string {
             <span
               ><span class="font-medium text-info">{{ summary.body }}</span> body</span
             >
-            <span class="text-dim">·</span>
-            <span
-              ><span class="font-medium text-warning">{{ summary.header }}</span> header</span
-            >
+            <template v-if="!bodyOnly">
+              <span class="text-dim">·</span>
+              <span
+                ><span class="font-medium text-warning">{{ summary.header }}</span> header</span
+              >
+            </template>
             <span>change{{ summary.body + summary.header === 1 ? '' : 's' }}</span>
             <template v-if="summary.ignored > 0">
               <span class="text-dim">·</span>

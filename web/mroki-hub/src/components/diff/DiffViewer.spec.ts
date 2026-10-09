@@ -200,6 +200,7 @@ describe('DiffViewer body-only comparisons', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('"headers"')
+    expect(wrapper.text()).not.toContain('header')
     expect(wrapper.text()).toContain('"id"')
   })
 
