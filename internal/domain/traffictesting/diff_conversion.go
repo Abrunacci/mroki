@@ -7,8 +7,8 @@ import (
 
 // FieldConversion records a declared type conversion applied to one field of
 // the shadow body before the diff was computed (see the shadow adapter's
-// mapping). It lets readers tell a difference that a rule accepted from one
-// that never existed.
+// mapping), so readers can see which values were translated and what the
+// shadow actually sent.
 type FieldConversion struct {
 	// Field is the body field path (dot-separated), e.g. "id".
 	Field string

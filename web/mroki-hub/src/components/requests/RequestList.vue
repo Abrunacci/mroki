@@ -158,7 +158,7 @@ function prevPage() {
 }
 
 // Declared type conversions applied to the request's shadow values; shown so a
-// "No diff" never hides that a mapping rule accepted a type difference.
+// "No diff" never hides that values were translated by type.
 function conversionBadge(request: Request): { text: string; failed: boolean } | null {
   const { applied, failed } = conversionCounts(request.shadow_adapter?.conversions)
   if (failed > 0) {

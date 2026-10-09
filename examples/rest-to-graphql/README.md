@@ -2,8 +2,9 @@
 
 Compare a legacy REST service against the GraphQL service that replaces it, and see the comparison in
 mroki hub. mroki-proxy translates each REST request into a GraphQL query for the shadow service, and
-mroki-api brings the GraphQL response back to the REST shape using a field mapping before it diffs
-the two, so the hub shows only real differences, not protocol differences.
+mroki-api translates the GraphQL response back to the REST shape using a mapping (field names, and
+the types and formats of values) before it diffs the two, so the hub shows only real differences,
+not protocol differences.
 
 ```
 client ── GET /bookings/1042 ──► mroki-proxy ──► legacy REST (live)
@@ -15,22 +16,26 @@ client ── GET /bookings/1042 ──► mroki-proxy ──► legacy REST (li
                                           (normalized with the gate's mapping, then diffed)
 ```
 
-The two services in this directory return the same bookings, with deliberate differences:
+The two services in this directory return the same bookings, each in its own protocol. Some
+differences are just how each protocol represents the data, and the mapping translates them; others
+are real:
 
 | Field | Legacy REST | New GraphQL | In the comparison |
 |---|---|---|---|
-| `id` | `1042` (number) | `"1042"` (string, GraphQL `ID`) | accepted: compared as a number |
-| `check_in` / `checkIn` | `"2026-10-09"` | `"2026-10-09T00:00:00Z"` | accepted: compared as a date |
+| `guest_name` / `guestName` | `guest_name` | `guestName` | protocol: the mapping renames the field |
+| `id` | `1042` (number) | `"1042"` (GraphQL `ID`, always text) | protocol: the mapping converts it to a number |
+| `check_in` / `checkIn` | `"2026-10-09"` | `"2026-10-09T00:00:00Z"` | protocol: the mapping converts it to a date |
 | `total_price` / `totalPrice` (booking 1042) | `450.5` | `405.5` | a real difference |
-| `id` (booking 1044) | `1044` | `"Qm9va2luZzoxMDQ0"` | a real difference: not a number |
+| `id` (booking 1044) | `1044` | `"Qm9va2luZzoxMDQ0"` | a real difference: cannot be translated to a number |
 
-Everything else matches once field names are mapped (`guest_name` ↔ `guestName`, …). The legacy-only
-`legacy_code` field is not in the mapping, so it is left out of the comparison.
+The legacy-only `legacy_code` field is not in the mapping, so it is left out of the comparison.
 
-The type differences are known and accepted, so the mapping declares a **conversion** for those two
-fields (`as: number`, `as: date`). The value is still compared after converting it: if GraphQL sent
-another id, or an id that is not a number, it would show up as a difference. See
-[Field Conversions](#field-conversions) below.
+A GraphQL `ID` always travels as text, by definition of the language, so `"1042"` is not an error of
+the new system: converting it to a number finishes bringing the response to the REST shape, the same
+way renaming `guestName` to `guest_name` does. The mapping declares this per field with `as:`
+(`as: number`, `as: date`). After translating, the values are compared as usual: if GraphQL sent
+another id, it would show up as a difference, and an id that cannot be translated to a number is a
+difference too. See [Field Conversions](#field-conversions) below.
 
 ## Files
 
@@ -73,11 +78,11 @@ Leave this terminal running. If a port is already in use, see [Ports](#ports) be
 `mapping.yaml`). Below are the three requests the example sent:
 
 - `/bookings/1042`: **Diff**, with a **2 conversions** mark.
-- `/bookings/1043`: **No diff**, with a **2 conversions** mark: the only differences were the two
-  accepted types, and the mark tells you a declared rule was applied.
+- `/bookings/1043`: **No diff**, with a **2 conversions** mark: once translated, the two responses
+  are the same, and the mark tells you two values were translated by type.
 - `/bookings/9999`: **Diff** (found in neither system).
 
-**4. Open `GET /bookings/1043`.** This is a comparison where only accepted differences existed:
+**4. Open `GET /bookings/1043`.** This is a comparison where the only differences were protocol ones:
 
 - A note says **REST → GraphQL · body only**: the GraphQL response was normalized to the REST shape
   with the mapping version shown, and only the mapped body fields were compared.
@@ -88,8 +93,9 @@ Leave this terminal running. If a port is already in use, see [Ports](#ports) be
   and what GraphQL actually sent without hovering.
 - Live and shadow status codes are shown as **(not compared)**: GraphQL answers `200` even for errors.
 
-**5. Open `GET /bookings/1042`.** The conversions accept the type differences, but not the value
-difference: `total_price` is marked (`450.5` vs `405.5`). A conversion never hides a different value.
+**5. Open `GET /bookings/1042`.** `id` and `check_in` are translated as in 1043, and the real
+difference is marked: `total_price` (`450.5` vs `405.5`). A conversion only translates the
+representation; a different value is still a difference.
 
 **6. Open `GET /bookings/9999`.** REST answered `404` and GraphQL answered `200` with a `null`
 booking. The body difference is what is marked: `{}` on the live side (the error body has none of the
@@ -317,7 +323,7 @@ At startup the proxy confirms the mapping was loaded:
 level=INFO msg="graphql shadow adapter configured" file=examples/rest-to-graphql/mapping.yaml endpoint=/graphql routes=1
 ```
 
-For `GET /bookings/1042`, the proxy calls the GraphQL service, converts `id` and `check_in` as the
+For `GET /bookings/1042`, the proxy calls the GraphQL service, translates `id` and `check_in` as the
 mapping declares, and logs the one real difference as a JSON Patch operation (the value shown is the
 shadow's):
 
@@ -333,7 +339,7 @@ Status codes and headers are not compared, because GraphQL usually answers `200`
 
 More cases worth trying:
 
-- `curl http://localhost:8080/bookings/1043`: only accepted type differences, so the proxy logs
+- `curl http://localhost:8080/bookings/1043`: only protocol differences, so the proxy logs
   `responses match` (at debug level, after the two conversions).
 - `curl http://localhost:8080/bookings/1044`: the GraphQL id is not a number, so the conversion fails
   with a warning (`declared conversion failed, comparing the original value`) and the diff shows
@@ -345,8 +351,10 @@ More cases worth trying:
 
 ## Field Conversions
 
-A field in `response.fields` is either the GraphQL field name (`guest_name: guestName`) or an object
-that also says what type the GraphQL value is compared as:
+Translating a GraphQL response to the REST shape is more than renaming fields: GraphQL also has its
+own types and formats (an `ID` is always text, a date may come as a timestamp). A field in
+`response.fields` is either the GraphQL field name (`guest_name: guestName`) or an object that also
+says what type the GraphQL value is converted to, to match the REST response:
 
 ```yaml
 fields:
@@ -354,9 +362,9 @@ fields:
   check_in: { from: checkIn, as: date }
 ```
 
-Only the GraphQL value is converted; the REST response is the reference and stays as it is. The
-value is still compared after converting it, so a different value is still a difference. A value
-that cannot be converted keeps its original form and shows up as a difference, marked **conversion
+Only the GraphQL value is converted, like the rest of the mapping: the REST response is the
+reference and stays as it is. The translated value is compared as usual, so a different value is
+still a difference. A value that cannot be translated keeps its original form and shows up as a difference, marked **conversion
 failed** in the hub. `null` and missing fields are not converted: they are compared as they are.
 
 | `as` | Converts | Fails on |
