@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch, onMounted, onUnmounted } from 'vue'
-import type { Response, PatchOp, DiffConfig } from '@/api'
+import type { Response, PatchOp, DiffConfig, FieldConversion } from '@/api'
 import {
   buildDiffLines,
   buildSplitRows,
@@ -21,6 +21,7 @@ import {
   EyeOff,
 } from 'lucide-vue-next'
 import { pointerToGjson } from '@/lib/utils'
+import { conversionNote, conversionsByPointer } from '@/lib/conversions'
 
 type ViewMode = 'unified' | 'split' | 'patch'
 const MD_BREAKPOINT = 768
@@ -68,6 +69,13 @@ interface Props {
    * otherwise render as if they matched.
    */
   bodyOnly?: boolean
+  /**
+   * Type conversions declared in the mapping and applied to shadow values
+   * before diffing. Each converted field is annotated on the shadow side with
+   * what the shadow sent (or why the conversion failed), as visible text so
+   * it shows on touch screens and shared screens too.
+   */
+  conversions?: FieldConversion[] | null
 }
 
 const props = defineProps<Props>()
@@ -85,6 +93,22 @@ const includedFields = computed(() => props.diffConfig?.included_fields ?? [])
 const ignoredSet = computed(() => new Set(ignoredFields.value))
 function isIgnored(row: PatchRow): boolean {
   return ignoredSet.value.has(pointerToGjson(row.path))
+}
+
+// --- Declared conversions (shadow adapter mapping `as:`) ---
+const conversionMap = computed(() => conversionsByPointer(props.conversions))
+// The conversion to annotate on a line: only on the line holding the field's
+// key, and only where the shadow value is shown (unchanged lines are shared).
+function lineConversion(line: DiffLine): FieldConversion | undefined {
+  if (conversionMap.value.size === 0) return undefined
+  if (line.type !== 'normal' && line.type !== 'replaced-new' && line.type !== 'added') {
+    return undefined
+  }
+  if (line.tokens[0]?.type !== 'key') return undefined
+  return conversionMap.value.get(line.path)
+}
+function conversionNoteClass(c: FieldConversion): string {
+  return c.error ? 'bg-danger/10 text-danger' : 'bg-info/10 text-info'
 }
 
 // Change summary: body vs header op counts plus the number of ignored fields,
@@ -555,7 +579,11 @@ function tokenClass(token: Token): string {
               >{{ gutterChar(line) }}</span><span class="whitespace-pre">{{ '  '.repeat(line.indent) }}</span><template
                 v-for="(tok, ti) in line.tokens"
                 :key="ti"
-              ><span :class="tokenClass(tok)">{{ tok.text }}</span></template></div></template></pre>
+              ><span :class="tokenClass(tok)">{{ tok.text }}</span></template><span
+                v-if="lineConversion(line)"
+                data-testid="conversion-note"
+                :class="['ml-3 px-1 rounded text-[10px]', conversionNoteClass(lineConversion(line)!)]"
+              >{{ conversionNote(lineConversion(line)!) }}</span></div></template></pre>
       </div>
 
       <!-- Split JSON Diff View -->
@@ -644,7 +672,11 @@ function tokenClass(token: Token): string {
                   >{{ gutterChar(row.right) }}</span><span class="whitespace-pre">{{ '  '.repeat(row.right.indent) }}</span><template
                     v-for="(tok, ti) in row.right.tokens"
                     :key="ti"
-                  ><span :class="tokenClass(tok)">{{ tok.text }}</span></template></div><div
+                  ><span :class="tokenClass(tok)">{{ tok.text }}</span></template><span
+                    v-if="lineConversion(row.right)"
+                    data-testid="conversion-note"
+                    :class="['ml-3 px-1 rounded text-[10px]', conversionNoteClass(lineConversion(row.right)!)]"
+                  >{{ conversionNote(lineConversion(row.right)!) }}</span></div><div
                   v-else
                   :class="['px-4 text-transparent select-none', wrapLines ? '' : 'min-w-fit']"
                 >&nbsp;</div></template></pre>
@@ -714,6 +746,14 @@ function tokenClass(token: Token): string {
                 ><span
                   :class="row.leafIsIndex ? 'text-muted-foreground' : 'text-foreground font-medium'"
                   >{{ row.leafLabel }}</span
+                ><span
+                  v-if="conversionMap.get(row.path)"
+                  data-testid="conversion-note"
+                  :class="[
+                    'ml-2 px-1 rounded text-[10px]',
+                    conversionNoteClass(conversionMap.get(row.path)!),
+                  ]"
+                  >{{ conversionNote(conversionMap.get(row.path)!) }}</span
                 >
               </div>
               <div

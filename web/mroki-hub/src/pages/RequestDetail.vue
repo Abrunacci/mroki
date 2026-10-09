@@ -16,6 +16,7 @@ import DiffViewer from '@/components/diff/DiffViewer.vue'
 import { ChevronLeft, Copy, Download, ChevronDown, Check } from 'lucide-vue-next'
 import { truncateId, methodColorClass, formatLatency } from '@/lib/utils'
 import { shadowAdapterLabel } from '@/lib/shadow-adapter'
+import { conversionNote } from '@/lib/conversions'
 
 const route = useRoute()
 const router = useRouter()
@@ -69,6 +70,8 @@ const diffCount = computed(() => request.value?.diff?.content?.length ?? 0)
 // A diff computed through a shadow adapter (e.g. REST → GraphQL) compared only
 // the normalized bodies, with the mapping version recorded on the diff.
 const diffAdapter = computed(() => request.value?.diff?.shadow_adapter ?? null)
+// Declared type conversions applied to shadow values before diffing.
+const conversions = computed(() => diffAdapter.value?.conversions ?? [])
 // The gate's current mapping version ('' when it no longer has an adapter).
 const gateMappingVersion = computed(() => gate.value?.shadow_adapter?.version ?? '')
 // Flags a comparison made with a mapping other than the gate's current one, so
@@ -393,6 +396,25 @@ onUnmounted(() => {
             <code class="font-mono text-foreground">{{ diffAdapter.version }}</code> before
             comparing. Only the mapped body fields are compared; status codes and headers are not.
           </p>
+          <div v-if="conversions.length" data-testid="conversions-summary" class="mt-2">
+            <p>
+              {{ conversions.length }} field{{ conversions.length > 1 ? 's' : '' }} compared with a
+              type conversion declared in the mapping:
+            </p>
+            <ul class="mt-1 space-y-0.5">
+              <li
+                v-for="c in conversions"
+                :key="c.field"
+                class="font-mono text-xs break-all"
+                :class="c.error ? 'text-danger' : 'text-foreground'"
+              >
+                {{ c.field }}
+                <span :class="c.error ? 'text-danger' : 'text-muted-foreground'">{{
+                  conversionNote(c)
+                }}</span>
+              </li>
+            </ul>
+          </div>
         </AlertDescription>
       </Alert>
       <Alert
@@ -423,6 +445,7 @@ onUnmounted(() => {
         :live-response="liveResponse"
         :shadow-response="shadowResponse"
         :body-only="diffAdapter !== null"
+        :conversions="conversions"
         :diff-content="request.diff.content"
         :diff-config="gate?.diff_config ?? request.diff.config"
         @ignore-field="onIgnoreField"

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import RequestDetail from './RequestDetail.vue'
-import type { Gate, RequestDetail as RequestDetailType, Response } from '@/api'
+import type { FieldConversion, Gate, RequestDetail as RequestDetailType, Response } from '@/api'
 
 const getGate = vi.fn()
 const getRequest = vi.fn()
@@ -89,7 +89,14 @@ const global = {
   stubs: {
     DiffViewer: {
       name: 'DiffViewer',
-      props: ['liveResponse', 'shadowResponse', 'diffContent', 'diffConfig', 'bodyOnly'],
+      props: [
+        'liveResponse',
+        'shadowResponse',
+        'diffContent',
+        'diffConfig',
+        'bodyOnly',
+        'conversions',
+      ],
       template: '<div />',
     },
     Alert: passthrough,
@@ -288,14 +295,39 @@ describe('RequestDetail shadow adapter', () => {
 
   const adapter = { type: 'graphql', config: 'endpoint: /graphql', version: 'bbbbbbbbbbbb' }
 
-  function adapterRequest(version: string) {
+  function adapterRequest(version: string, conversions: FieldConversion[] = []) {
     const base = makeRequest()
     return makeRequest({
       method: 'GET',
       path: '/bookings/1042',
-      diff: { ...base.diff, shadow_adapter: { type: 'graphql', version } },
+      diff: { ...base.diff, shadow_adapter: { type: 'graphql', version, conversions } },
     })
   }
+
+  it('lists the declared conversions with the values the shadow sent', async () => {
+    const conversions: FieldConversion[] = [
+      { field: 'id', as: 'number', original: '1042' },
+      { field: 'check_in', as: 'date', original: '2026-10-09T00:00:00-03:00', error: 'not UTC' },
+    ]
+    const wrapper = await mountDetail(
+      adapterRequest('bbbbbbbbbbbb', conversions),
+      makeGate({ shadow_adapter: adapter })
+    )
+
+    const summary = wrapper.find('[data-testid="conversions-summary"]')
+    expect(summary.text()).toContain('2 fields compared with a type conversion')
+    expect(summary.text()).toContain('id as number · sent "1042"')
+    expect(summary.text()).toContain('check_in as date failed: not UTC')
+    expect(wrapper.findComponent({ name: 'DiffViewer' }).props('conversions')).toEqual(conversions)
+  })
+
+  it('shows no conversion summary when the mapping declares none', async () => {
+    const wrapper = await mountDetail(
+      adapterRequest('bbbbbbbbbbbb'),
+      makeGate({ shadow_adapter: adapter })
+    )
+    expect(wrapper.find('[data-testid="conversions-summary"]').exists()).toBe(false)
+  })
 
   it('explains a body-only REST → GraphQL comparison and its mapping version', async () => {
     const wrapper = await mountDetail(

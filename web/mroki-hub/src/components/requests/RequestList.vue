@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import Pagination from '@/components/common/Pagination.vue'
 import { methodColorClass, formatLatency } from '@/lib/utils'
+import { conversionCounts } from '@/lib/conversions'
 import { ChevronRight } from 'lucide-vue-next'
 
 interface Props {
@@ -154,6 +155,19 @@ function nextPage() {
 
 function prevPage() {
   table.previousPage()
+}
+
+// Declared type conversions applied to the request's shadow values; shown so a
+// "No diff" never hides that a mapping rule accepted a type difference.
+function conversionBadge(request: Request): { text: string; failed: boolean } | null {
+  const { applied, failed } = conversionCounts(request.shadow_adapter?.conversions)
+  if (failed > 0) {
+    return { text: failed > 1 ? `${failed} conversions failed` : 'Conversion failed', failed: true }
+  }
+  if (applied > 0) {
+    return { text: `${applied} conversion${applied > 1 ? 's' : ''}`, failed: false }
+  }
+  return null
 }
 
 function usedOtherMapping(request: Request): boolean {
@@ -310,6 +324,19 @@ const truncatedQueries = computed(() => {
                   >, not the gate's current one.
                 </TooltipContent>
               </Tooltip>
+              <!-- Declared conversions badge -->
+              <span
+                v-if="conversionBadge(request)"
+                data-testid="conversion-badge"
+                class="inline-flex items-center text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
+                :class="
+                  conversionBadge(request)!.failed
+                    ? 'bg-danger/10 text-danger'
+                    : 'bg-info/10 text-info'
+                "
+              >
+                {{ conversionBadge(request)!.text }}
+              </span>
               <!-- Diff badge -->
               <span
                 v-if="request.has_diff"
