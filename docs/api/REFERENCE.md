@@ -160,6 +160,11 @@ A paginated list of gates.
             "/token"
          ],
          "retention": "168h",
+         "shadow_adapter": {
+            "config": "endpoint: /graphql\nroutes:\n  - match: GET /bookings/{id}\n    query: |\n      query GetBooking($id: ID!) { booking(id: $id) { id guestName } }\n    variables:\n      id: path.id\n    response:\n      root: data.booking\n      fields:\n        id: id\n        guest_name: guestName\n",
+            "type": "graphql",
+            "version": "3f2a9c41d07b"
+         },
          "shadow_url": "https://shadow.example.com",
          "stats": {
             "diff_count_24h": 6,
@@ -193,6 +198,7 @@ A paginated list of gates.
 - `retention` *(string, required)*: Per-gate retention as a Go duration string (e.g. `168h`). An empty string
 means the gate uses the global retention floor.
 
+- `shadow_adapter`: Shadow adapter (e.g. REST live vs GraphQL shadow), or null when requests are compared as is.
 - `created_at` *(string, required)*: When the gate was created (RFC 3339).
 - `stats` *(GateStats, required)*: Computed statistics for a single gate.
 
@@ -282,6 +288,11 @@ Creates a new gate with live and shadow URLs.
 {
    "live_url": "https://live.example.com",
    "name": "users-service",
+   "shadow_adapter": {
+      "config": "endpoint: /graphql\nroutes:\n  - match: GET /bookings/{id}\n    query: |\n      query GetBooking($id: ID!) { booking(id: $id) { id guestName } }\n    variables:\n      id: path.id\n    response:\n      root: data.booking\n      fields:\n        id: id\n        guest_name: guestName\n",
+      "type": "graphql",
+      "version": "3f2a9c41d07b"
+   },
    "shadow_url": "https://shadow.example.com"
 }
 ```
@@ -291,6 +302,22 @@ Creates a new gate with live and shadow URLs.
 - `name` *(string, required)* Human-readable gate name (must be unique across gates).
 - `live_url` *(string, required)* Base URL of the live (production) service.
 - `shadow_url` *(string, required)* Base URL of the shadow (candidate) service.
+- `shadow_adapter` *(ShadowAdapter)* Makes a shadow service that speaks a different protocol comparable with live.
+With the `graphql` type, mroki-proxy rewrites each REST request sent to shadow
+into a GraphQL query, and mroki-api normalizes the GraphQL response back into
+the REST shape before diffing. Only the (normalized) bodies are compared.
+
+
+**ShadowAdapter**
+- `type` *(string, required)*: Adapter type.. Enums: `graphql`
+- `config` *(string, required)*: Adapter configuration document, stored verbatim. For `graphql`, the YAML
+REST → GraphQL mapping (the same format as `MROKI_APP_GRAPHQL_CONFIG` in
+standalone mode).
+
+- `version` *(string)*: Identifies the mapping: the first 12 hex characters of the SHA-256 of the
+type and config. Any edit produces a new version. Ignored on create and
+update.
+
 
 ### Responses
 
@@ -319,6 +346,11 @@ The created gate.
          "/token"
       ],
       "retention": "168h",
+      "shadow_adapter": {
+         "config": "endpoint: /graphql\nroutes:\n  - match: GET /bookings/{id}\n    query: |\n      query GetBooking($id: ID!) { booking(id: $id) { id guestName } }\n    variables:\n      id: path.id\n    response:\n      root: data.booking\n      fields:\n        id: id\n        guest_name: guestName\n",
+         "type": "graphql",
+         "version": "3f2a9c41d07b"
+      },
       "shadow_url": "https://shadow.example.com",
       "stats": {
          "diff_count_24h": 6,
@@ -439,6 +471,11 @@ The requested gate.
          "/token"
       ],
       "retention": "168h",
+      "shadow_adapter": {
+         "config": "endpoint: /graphql\nroutes:\n  - match: GET /bookings/{id}\n    query: |\n      query GetBooking($id: ID!) { booking(id: $id) { id guestName } }\n    variables:\n      id: path.id\n    response:\n      root: data.booking\n      fields:\n        id: id\n        guest_name: guestName\n",
+         "type": "graphql",
+         "version": "3f2a9c41d07b"
+      },
       "shadow_url": "https://shadow.example.com",
       "stats": {
          "diff_count_24h": 6,
@@ -550,7 +587,12 @@ Updates a gate. All fields are optional; omitted fields are left unchanged.
    "redacted_fields": [
       "/password"
    ],
-   "retention": "168h"
+   "retention": "168h",
+   "shadow_adapter": {
+      "config": "endpoint: /graphql\nroutes:\n  - match: GET /bookings/{id}\n    query: |\n      query GetBooking($id: ID!) { booking(id: $id) { id guestName } }\n    variables:\n      id: path.id\n    response:\n      root: data.booking\n      fields:\n        id: id\n        guest_name: guestName\n",
+      "type": "graphql",
+      "version": "3f2a9c41d07b"
+   }
 }
 ```
 
@@ -563,6 +605,11 @@ Updates a gate. All fields are optional; omitted fields are left unchanged.
 omit it to leave the value unchanged; send `null` or an empty string to
 reset to the global retention floor; send a duration (e.g. `168h`) to set
 a custom value.
+
+- `shadow_adapter` Shadow adapter. This field is tri-state: omit it to leave the adapter
+unchanged; send `null` to remove it; send an object to replace it (which
+produces a new mapping version). mroki-proxy reads the adapter when it
+starts, so restart it after a change.
 
 
 **DiffConfig**
@@ -600,6 +647,11 @@ The updated gate.
          "/token"
       ],
       "retention": "168h",
+      "shadow_adapter": {
+         "config": "endpoint: /graphql\nroutes:\n  - match: GET /bookings/{id}\n    query: |\n      query GetBooking($id: ID!) { booking(id: $id) { id guestName } }\n    variables:\n      id: path.id\n    response:\n      root: data.booking\n      fields:\n        id: id\n        guest_name: guestName\n",
+         "type": "graphql",
+         "version": "3f2a9c41d07b"
+      },
       "shadow_url": "https://shadow.example.com",
       "stats": {
          "diff_count_24h": 6,
@@ -1252,7 +1304,11 @@ The requested request detail.
                "path": "/data/name",
                "value": "new-value"
             }
-         ]
+         ],
+         "shadow_adapter": {
+            "type": "graphql",
+            "version": "3f2a9c41d07b"
+         }
       },
       "headers": {
          "Accept": [
@@ -1305,7 +1361,7 @@ The requested request detail.
 - `created_at` *(string, required)*: When the request was captured (RFC 3339).
 - `live_response` *(ResponseDetail, required)*: A response with full details, used in the request detail view.
 - `shadow_response` *(ResponseDetail, required)*: A response with full details, used in the request detail view.
-- `diff` *(DiffDetail, required)*: Diff content and the diff config snapshot used to compute it.
+- `diff` *(DiffDetail, required)*: Diff content, and the diff config and shadow adapter snapshots used to compute it.
 
 **ResponseDetail**
 - `id` *(string, required)*: Unique response identifier.
@@ -1326,6 +1382,7 @@ The requested request detail.
 **DiffDetail**
 - `content` *(array of PatchOp, required)*: RFC 6902 JSON Patch operations describing the differences.
 - `config` *(DiffConfig, required)*: Per-gate diff computation settings.
+- `shadow_adapter`: Shadow adapter and mapping version the diff was computed with, or null when none was used.
 
 **PatchOp**
 - `op` *(string, required)*: The JSON Patch operation.. Enums: `add`, `remove`, `replace`
@@ -1503,6 +1560,7 @@ Used in: GET /gates/{gate_id}, PATCH /gates/{gate_id}, POST /gates
 - `retention` *(string, required)*: Per-gate retention as a Go duration string (e.g. `168h`). An empty string
 means the gate uses the global retention floor.
 
+- `shadow_adapter`: Shadow adapter (e.g. REST live vs GraphQL shadow), or null when requests are compared as is.
 - `created_at` *(string, required)*: When the gate was created (RFC 3339).
 - `stats` *(GateStats, required)*: Computed statistics for a single gate.
 

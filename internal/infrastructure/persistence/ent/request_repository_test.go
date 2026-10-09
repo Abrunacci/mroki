@@ -561,3 +561,26 @@ func TestRequestRepository_Save_without_diff(t *testing.T) {
 	assert.Equal(t, 200, result.LiveResponse.StatusCode.Int())
 	assert.Equal(t, 200, result.ShadowResponse.StatusCode.Int())
 }
+
+func TestRequestRepository_Save_persists_shadow_adapter_snapshot(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer func() { _ = client.Close() }()
+
+	gateRepo := ent.NewGateRepository(client)
+	reqRepo := ent.NewRequestRepository(client)
+	gateID := setupGate(t, gateRepo)
+
+	withAdapter := newTestRequest(t, gateID)
+	withAdapter.Diff.ShadowAdapter = traffictesting.ShadowAdapterSnapshot{Type: "graphql", Version: "0123456789ab"}
+	withoutAdapter := newTestRequest(t, gateID)
+	require.NoError(t, reqRepo.Save(context.Background(), withAdapter))
+	require.NoError(t, reqRepo.Save(context.Background(), withoutAdapter))
+
+	got, err := reqRepo.GetByID(context.Background(), withAdapter.ID, gateID)
+	require.NoError(t, err)
+	assert.Equal(t, traffictesting.ShadowAdapterSnapshot{Type: "graphql", Version: "0123456789ab"}, got.Diff.ShadowAdapter)
+
+	got, err = reqRepo.GetByID(context.Background(), withoutAdapter.ID, gateID)
+	require.NoError(t, err)
+	assert.True(t, got.Diff.ShadowAdapter.IsZero())
+}

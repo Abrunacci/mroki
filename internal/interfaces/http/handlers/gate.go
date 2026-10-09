@@ -15,9 +15,10 @@ import (
 func CreateGate(handler *commands.CreateGateHandler) AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var req struct {
-			Name      string `json:"name"`
-			LiveURL   string `json:"live_url"`
-			ShadowURL string `json:"shadow_url"`
+			Name          string             `json:"name"`
+			LiveURL       string             `json:"live_url"`
+			ShadowURL     string             `json:"shadow_url"`
+			ShadowAdapter *dto.ShadowAdapter `json:"shadow_adapter"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -41,6 +42,12 @@ func CreateGate(handler *commands.CreateGateHandler) AppHandler {
 			LiveURL:   req.LiveURL,
 			ShadowURL: req.ShadowURL,
 		}
+		if req.ShadowAdapter != nil {
+			cmd.ShadowAdapter = &commands.ShadowAdapterProps{
+				Type:   req.ShadowAdapter.Type,
+				Config: req.ShadowAdapter.Config,
+			}
+		}
 
 		gate, err := handler.Handle(r.Context(), cmd)
 		if err != nil {
@@ -49,6 +56,8 @@ func CreateGate(handler *commands.CreateGateHandler) AppHandler {
 				return dto.InvalidGateName(err)
 			case errors.Is(err, traffictesting.ErrInvalidGateURL):
 				return dto.InvalidGateURL(err)
+			case errors.Is(err, traffictesting.ErrInvalidShadowAdapter):
+				return dto.InvalidShadowAdapter(err)
 			case errors.Is(err, traffictesting.ErrDuplicateGateName):
 				return dto.DuplicateGateName(err)
 			case errors.Is(err, traffictesting.ErrDuplicateGateURLs):
@@ -229,6 +238,7 @@ func UpdateGate(handler *commands.UpdateGateHandler) AppHandler {
 			DiffConfig     *dto.DiffConfig `json:"diff_config"`
 			RedactedFields *[]string       `json:"redacted_fields"`
 			Retention      json.RawMessage `json:"retention"`
+			ShadowAdapter  json.RawMessage `json:"shadow_adapter"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -245,10 +255,18 @@ func UpdateGate(handler *commands.UpdateGateHandler) AppHandler {
 			return err
 		}
 
+		// shadow_adapter is tri-state too: absent leaves it unchanged, null
+		// removes it, and an object replaces it.
+		shadowAdapter, err := decodeShadowAdapter(req.ShadowAdapter)
+		if err != nil {
+			return err
+		}
+
 		cmd := commands.UpdateGateCommand{
-			ID:        id,
-			Name:      req.Name,
-			Retention: retention,
+			ID:            id,
+			Name:          req.Name,
+			Retention:     retention,
+			ShadowAdapter: shadowAdapter,
 		}
 
 		if req.DiffConfig != nil {
@@ -283,6 +301,8 @@ func UpdateGate(handler *commands.UpdateGateHandler) AppHandler {
 				return dto.InvalidRetention(err)
 			case errors.Is(err, traffictesting.ErrRetentionBelowMinimum):
 				return dto.RetentionBelowMinimum(err)
+			case errors.Is(err, traffictesting.ErrInvalidShadowAdapter):
+				return dto.InvalidShadowAdapter(err)
 			case errors.Is(err, traffictesting.ErrDuplicateGateName):
 				return dto.DuplicateGateName(err)
 			default:
@@ -329,6 +349,34 @@ func decodeRetention(raw json.RawMessage) (*string, error) {
 	return &s, nil
 }
 
+// decodeShadowAdapter interprets the raw JSON value of the "shadow_adapter"
+// field as a tri-state command value. An absent field returns nil (unchanged),
+// a JSON null returns the zero props (remove), and an object returns its type
+// and config (replace). The read-only "version" key is ignored.
+func decodeShadowAdapter(raw json.RawMessage) (*commands.ShadowAdapterProps, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	if string(raw) == "null" {
+		return &commands.ShadowAdapterProps{}, nil
+	}
+	var a dto.ShadowAdapter
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return nil, dto.InvalidRequestBody(err)
+	}
+	if a.Type == "" {
+		return nil, dto.MissingBodyProperty("shadow_adapter.type")
+	}
+	return &commands.ShadowAdapterProps{Type: a.Type, Config: a.Config}, nil
+}
+
+func mapShadowAdapterToDTO(a traffictesting.ShadowAdapter) *dto.ShadowAdapter {
+	if !a.IsSet() {
+		return nil
+	}
+	return &dto.ShadowAdapter{Type: a.Type(), Config: a.Config(), Version: a.Version()}
+}
+
 func mapGateToDTO(gws *queries.GateWithStats) dto.Gate {
 	var lastActive *string
 	if gws.Stats.LastActive != nil {
@@ -349,6 +397,7 @@ func mapGateToDTO(gws *queries.GateWithStats) dto.Gate {
 		},
 		RedactedFields: gws.Gate.RedactedFields.AdditionalFields,
 		Retention:      gws.Gate.Retention.String(),
+		ShadowAdapter:  mapShadowAdapterToDTO(gws.Gate.ShadowAdapter),
 		CreatedAt:      gws.Gate.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Stats: dto.GateStats{
 			RequestCount24h: gws.Stats.RequestCount24h,

@@ -58,6 +58,7 @@ var (
 		{Name: "diff_sort_arrays", Type: field.TypeBool, Nullable: true, Default: false},
 		{Name: "redacted_fields", Type: field.TypeJSON, Nullable: true},
 		{Name: "retention", Type: field.TypeString, Nullable: true},
+		{Name: "shadow_adapter", Type: field.TypeJSON, Nullable: true},
 	}
 	// GatesTable holds the schema information for the "gates" table.
 	GatesTable = &schema.Table{

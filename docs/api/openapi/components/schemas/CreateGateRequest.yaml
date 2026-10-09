@@ -21,3 +21,5 @@ properties:
     format: uri
     description: Base URL of the shadow (candidate) service.
     example: "https://shadow.example.com"
+  shadow_adapter:
+    $ref: "./ShadowAdapter.yaml"

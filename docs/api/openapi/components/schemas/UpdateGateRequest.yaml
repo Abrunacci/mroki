@@ -28,3 +28,12 @@ properties:
       reset to the global retention floor; send a duration (e.g. `168h`) to set
       a custom value.
     example: "168h"
+  shadow_adapter:
+    description: |
+      Shadow adapter. This field is tri-state: omit it to leave the adapter
+      unchanged; send `null` to remove it; send an object to replace it (which
+      produces a new mapping version). mroki-proxy reads the adapter when it
+      starts, so restart it after a change.
+    oneOf:
+      - $ref: "./ShadowAdapter.yaml"
+      - type: "null"

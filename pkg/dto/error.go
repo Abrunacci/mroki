@@ -311,6 +311,22 @@ func RetentionBelowMinimum(err error) *APIError {
 	)
 }
 
+// InvalidShadowAdapter returns an RFC 7807 error for an invalid shadow
+// adapter: an unsupported type or a configuration that fails validation.
+func InvalidShadowAdapter(err error) *APIError {
+	detail := "shadow_adapter is invalid"
+	if err != nil {
+		detail = fmt.Sprintf("%s: %v", detail, err)
+	}
+	return NewError(
+		http.StatusBadRequest,
+		ErrorTypeInvalidRequestBody,
+		"Invalid Shadow Adapter",
+		detail,
+		err,
+	)
+}
+
 // DuplicateGateURLs returns an RFC 7807 error for duplicate gate URL pairs.
 // Used when a gate with the same live_url + shadow_url combination already exists.
 func DuplicateGateURLs(err error) *APIError {

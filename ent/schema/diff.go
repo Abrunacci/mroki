@@ -19,6 +19,16 @@ type DiffConfigSnapshot struct {
 	IgnoredFields  []string `json:"ignored_fields,omitempty"`
 	IncludedFields []string `json:"included_fields,omitempty"`
 	FloatTolerance float64  `json:"float_tolerance,omitempty"`
+	// ShadowAdapter records the adapter and mapping version the diff was
+	// computed with (nil when none). When set, only bodies were compared.
+	ShadowAdapter *ShadowAdapterSnapshot `json:"shadow_adapter,omitempty"`
+}
+
+// ShadowAdapterSnapshot identifies a shadow adapter mapping by type and
+// content version.
+type ShadowAdapterSnapshot struct {
+	Type    string `json:"type"`
+	Version string `json:"version"`
 }
 
 // Diff holds the schema definition for the Diff entity.

@@ -15,6 +15,7 @@ import (
 	"github.com/pedrobarco/mroki/ent/gate"
 	"github.com/pedrobarco/mroki/ent/predicate"
 	"github.com/pedrobarco/mroki/ent/request"
+	"github.com/pedrobarco/mroki/ent/schema"
 )
 
 // GateUpdate is the builder for updating Gate entities.
@@ -165,6 +166,18 @@ func (_u *GateUpdate) ClearRetention() *GateUpdate {
 	return _u
 }
 
+// SetShadowAdapter sets the "shadow_adapter" field.
+func (_u *GateUpdate) SetShadowAdapter(v *schema.ShadowAdapterConfig) *GateUpdate {
+	_u.mutation.SetShadowAdapter(v)
+	return _u
+}
+
+// ClearShadowAdapter clears the value of the "shadow_adapter" field.
+func (_u *GateUpdate) ClearShadowAdapter() *GateUpdate {
+	_u.mutation.ClearShadowAdapter()
+	return _u
+}
+
 // AddRequestIDs adds the "requests" edge to the Request entity by IDs.
 func (_u *GateUpdate) AddRequestIDs(ids ...uuid.UUID) *GateUpdate {
 	_u.mutation.AddRequestIDs(ids...)
@@ -311,6 +324,12 @@ func (_u *GateUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RetentionCleared() {
 		_spec.ClearField(gate.FieldRetention, field.TypeString)
+	}
+	if value, ok := _u.mutation.ShadowAdapter(); ok {
+		_spec.SetField(gate.FieldShadowAdapter, field.TypeJSON, value)
+	}
+	if _u.mutation.ShadowAdapterCleared() {
+		_spec.ClearField(gate.FieldShadowAdapter, field.TypeJSON)
 	}
 	if _u.mutation.RequestsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -512,6 +531,18 @@ func (_u *GateUpdateOne) ClearRetention() *GateUpdateOne {
 	return _u
 }
 
+// SetShadowAdapter sets the "shadow_adapter" field.
+func (_u *GateUpdateOne) SetShadowAdapter(v *schema.ShadowAdapterConfig) *GateUpdateOne {
+	_u.mutation.SetShadowAdapter(v)
+	return _u
+}
+
+// ClearShadowAdapter clears the value of the "shadow_adapter" field.
+func (_u *GateUpdateOne) ClearShadowAdapter() *GateUpdateOne {
+	_u.mutation.ClearShadowAdapter()
+	return _u
+}
+
 // AddRequestIDs adds the "requests" edge to the Request entity by IDs.
 func (_u *GateUpdateOne) AddRequestIDs(ids ...uuid.UUID) *GateUpdateOne {
 	_u.mutation.AddRequestIDs(ids...)
@@ -688,6 +719,12 @@ func (_u *GateUpdateOne) sqlSave(ctx context.Context) (_node *Gate, err error) {
 	}
 	if _u.mutation.RetentionCleared() {
 		_spec.ClearField(gate.FieldRetention, field.TypeString)
+	}
+	if value, ok := _u.mutation.ShadowAdapter(); ok {
+		_spec.SetField(gate.FieldShadowAdapter, field.TypeJSON, value)
+	}
+	if _u.mutation.ShadowAdapterCleared() {
+		_spec.ClearField(gate.FieldShadowAdapter, field.TypeJSON)
 	}
 	if _u.mutation.RequestsCleared() {
 		edge := &sqlgraph.EdgeSpec{

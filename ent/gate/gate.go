@@ -35,6 +35,8 @@ const (
 	FieldRedactedFields = "redacted_fields"
 	// FieldRetention holds the string denoting the retention field in the database.
 	FieldRetention = "retention"
+	// FieldShadowAdapter holds the string denoting the shadow_adapter field in the database.
+	FieldShadowAdapter = "shadow_adapter"
 	// EdgeRequests holds the string denoting the requests edge name in mutations.
 	EdgeRequests = "requests"
 	// Table holds the table name of the gate in the database.
@@ -61,6 +63,7 @@ var Columns = []string{
 	FieldDiffSortArrays,
 	FieldRedactedFields,
 	FieldRetention,
+	FieldShadowAdapter,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

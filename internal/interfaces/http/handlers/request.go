@@ -294,6 +294,14 @@ func toFullRequestResponseDTO(req *traffictesting.Request) dto.RequestDetail {
 				FloatTolerance: req.Diff.Config.FloatTolerance,
 				SortArrays:     req.Diff.Config.SortArrays,
 			},
+			ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff.ShadowAdapter),
 		},
 	}
+}
+
+func mapDiffShadowAdapterToDTO(s traffictesting.ShadowAdapterSnapshot) *dto.DiffShadowAdapter {
+	if s.IsZero() {
+		return nil
+	}
+	return &dto.DiffShadowAdapter{Type: s.Type, Version: s.Version}
 }

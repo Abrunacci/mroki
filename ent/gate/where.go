@@ -501,6 +501,16 @@ func RetentionContainsFold(v string) predicate.Gate {
 	return predicate.Gate(sql.FieldContainsFold(FieldRetention, v))
 }
 
+// ShadowAdapterIsNil applies the IsNil predicate on the "shadow_adapter" field.
+func ShadowAdapterIsNil() predicate.Gate {
+	return predicate.Gate(sql.FieldIsNull(FieldShadowAdapter))
+}
+
+// ShadowAdapterNotNil applies the NotNil predicate on the "shadow_adapter" field.
+func ShadowAdapterNotNil() predicate.Gate {
+	return predicate.Gate(sql.FieldNotNull(FieldShadowAdapter))
+}
+
 // HasRequests applies the HasEdge predicate on the "requests" edge.
 func HasRequests() predicate.Gate {
 	return predicate.Gate(func(s *sql.Selector) {

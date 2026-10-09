@@ -89,4 +89,13 @@ type ResponseDetail struct {
 type DiffDetail struct {
 	Content []diff.PatchOp `json:"content"` // RFC 6902 JSON Patch operations
 	Config  DiffConfig     `json:"config"`  // Snapshot of the gate's diff config at computation time
+	// ShadowAdapter is the adapter and mapping version the diff was computed
+	// with, or null. When set, only the normalized bodies were compared.
+	ShadowAdapter *DiffShadowAdapter `json:"shadow_adapter"`
+}
+
+// DiffShadowAdapter identifies the shadow adapter mapping a diff was computed with.
+type DiffShadowAdapter struct {
+	Type    string `json:"type"`
+	Version string `json:"version"`
 }

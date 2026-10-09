@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pedrobarco/mroki/ent/gate"
 	"github.com/pedrobarco/mroki/ent/request"
+	"github.com/pedrobarco/mroki/ent/schema"
 )
 
 // GateCreate is the builder for creating a Gate entity.
@@ -111,6 +112,12 @@ func (_c *GateCreate) SetNillableRetention(v *string) *GateCreate {
 	if v != nil {
 		_c.SetRetention(*v)
 	}
+	return _c
+}
+
+// SetShadowAdapter sets the "shadow_adapter" field.
+func (_c *GateCreate) SetShadowAdapter(v *schema.ShadowAdapterConfig) *GateCreate {
+	_c.mutation.SetShadowAdapter(v)
 	return _c
 }
 
@@ -295,6 +302,10 @@ func (_c *GateCreate) createSpec() (*Gate, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Retention(); ok {
 		_spec.SetField(gate.FieldRetention, field.TypeString, value)
 		_node.Retention = value
+	}
+	if value, ok := _c.mutation.ShadowAdapter(); ok {
+		_spec.SetField(gate.FieldShadowAdapter, field.TypeJSON, value)
+		_node.ShadowAdapter = value
 	}
 	if nodes := _c.mutation.RequestsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

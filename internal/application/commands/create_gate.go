@@ -12,6 +12,15 @@ type CreateGateCommand struct {
 	Name      string
 	LiveURL   string
 	ShadowURL string
+	// ShadowAdapter is optional (nil means requests are compared as is).
+	ShadowAdapter *ShadowAdapterProps
+}
+
+// ShadowAdapterProps holds a gate's shadow adapter: its type (e.g. "graphql")
+// and configuration document (e.g. the YAML mapping).
+type ShadowAdapterProps struct {
+	Type   string
+	Config string
 }
 
 // CreateGateHandler handles the CreateGate command
@@ -43,8 +52,17 @@ func (h *CreateGateHandler) Handle(ctx context.Context, cmd CreateGateCommand) (
 		return nil, fmt.Errorf("invalid shadow URL: %w", err)
 	}
 
+	// Parse and validate the optional shadow adapter (domain validation)
+	adapter := traffictesting.NoShadowAdapter()
+	if cmd.ShadowAdapter != nil {
+		adapter, err = traffictesting.ParseShadowAdapter(cmd.ShadowAdapter.Type, cmd.ShadowAdapter.Config)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Create domain aggregate
-	gate, err := traffictesting.NewGate(name, liveURL, shadowURL)
+	gate, err := traffictesting.NewGate(name, liveURL, shadowURL, traffictesting.WithGateShadowAdapter(adapter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gate: %w", err)
 	}

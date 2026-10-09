@@ -252,22 +252,16 @@ func createStandaloneCallback(cfg ProxyConfig) proxy.CallbackFunc {
 	}
 }
 
-// comparerOptions returns the ResponseComparer options for a shadow adapter:
-// bodies are normalized for the request's route and only bodies are compared,
-// since status codes and headers differ by protocol. A normalization failure
-// is logged and the original bodies are compared instead.
+// comparerOptions returns the ResponseComparer options for a shadow adapter
+// (see services.ShadowAdapterOptions). A normalization failure is logged and
+// the original bodies are compared instead.
 func comparerOptions(adapter ShadowAdapter, req proxy.ProxyRequest, logger *slog.Logger) []services.ComparerOption {
 	if adapter == nil {
 		return nil
 	}
-	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
-		l, s, err := adapter.Normalize(req.Method, req.Path, live, shadow)
-		if err != nil {
-			logger.Warn("failed to normalize shadow response, comparing raw bodies", slog.String("error", err.Error()))
-		}
-		return l, s, err
-	}
-	return []services.ComparerOption{services.WithBodyNormalizer(normalize), services.WithBodyOnly()}
+	return services.ShadowAdapterOptions(adapter, req.Method, req.Path, func(err error) {
+		logger.Warn("failed to normalize shadow response, comparing raw bodies", slog.String("error", err.Error()))
+	})
 }
 
 // logDiffResult logs the diff outcome and prints the ops if any.

@@ -136,7 +136,7 @@ func (r *requestRepository) saveDiff(ctx context.Context, tx *ent.Tx, req *traff
 		SetToResponseID(req.ShadowResponse.ID).
 		SetContent(req.Diff.Content).
 		SetHasContent(req.Diff.HasContent()).
-		SetConfig(mapDiffConfigToPersistence(req.Diff.Config)).
+		SetConfig(mapDiffConfigToPersistence(req.Diff)).
 		SetCreatedAt(time.Now()).
 		Save(ctx); err != nil {
 		return fmt.Errorf("failed to save diff: %w", err)

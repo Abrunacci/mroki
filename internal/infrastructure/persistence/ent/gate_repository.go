@@ -24,7 +24,11 @@ func NewGateRepository(client *ent.Client) *gateRepository {
 }
 
 func (r *gateRepository) Save(ctx context.Context, g *traffictesting.Gate) error {
-	if _, err := r.client.Gate.Create().
+	create := r.client.Gate.Create()
+	if g.ShadowAdapter.IsSet() {
+		create.SetShadowAdapter(mapShadowAdapterToPersistence(g.ShadowAdapter))
+	}
+	if _, err := create.
 		SetID(g.ID.UUID()).
 		SetName(g.Name.String()).
 		SetLiveURL(g.LiveURL.String()).
@@ -46,7 +50,13 @@ func (r *gateRepository) Save(ctx context.Context, g *traffictesting.Gate) error
 }
 
 func (r *gateRepository) Update(ctx context.Context, g *traffictesting.Gate) error {
-	if _, err := r.client.Gate.UpdateOneID(g.ID.UUID()).
+	update := r.client.Gate.UpdateOneID(g.ID.UUID())
+	if g.ShadowAdapter.IsSet() {
+		update.SetShadowAdapter(mapShadowAdapterToPersistence(g.ShadowAdapter))
+	} else {
+		update.ClearShadowAdapter()
+	}
+	if _, err := update.
 		SetName(g.Name.String()).
 		SetDiffIgnoredFields(g.DiffConfig.IgnoredFields).
 		SetDiffIncludedFields(g.DiffConfig.IncludedFields).

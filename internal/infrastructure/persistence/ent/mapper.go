@@ -62,13 +62,26 @@ func mapGateToDomain(raw *ent.Gate) (*traffictesting.Gate, error) {
 		}
 	}
 
+	shadowAdapter := traffictesting.NoShadowAdapter()
+	if raw.ShadowAdapter != nil {
+		shadowAdapter, err = traffictesting.ParseShadowAdapter(raw.ShadowAdapter.Type, raw.ShadowAdapter.Config)
+		if err != nil {
+			return nil, fmt.Errorf("invalid shadow adapter in database: %w", err)
+		}
+	}
+
 	return traffictesting.NewGate(name, live, shadow,
 		traffictesting.WithGateID(id),
 		traffictesting.WithGateCreatedAt(raw.CreatedAt),
 		traffictesting.WithGateDiffConfig(diffConfig),
 		traffictesting.WithGateRedactedFields(redactedFields),
 		traffictesting.WithGateRetention(retention),
+		traffictesting.WithGateShadowAdapter(shadowAdapter),
 	)
+}
+
+func mapShadowAdapterToPersistence(a traffictesting.ShadowAdapter) *schema.ShadowAdapterConfig {
+	return &schema.ShadowAdapterConfig{Type: a.Type(), Config: a.Config()}
 }
 
 func mapRequestToDomain(raw *ent.Request) (*traffictesting.Request, error) {
@@ -128,19 +141,34 @@ func mapDiffToDomain(raw *ent.Diff) traffictesting.Diff {
 	if raw == nil || raw.FromResponseID == uuid.Nil {
 		return traffictesting.Diff{}
 	}
-	return traffictesting.Diff{
+	d := traffictesting.Diff{
 		Content: raw.Content,
 		Config:  mapDiffConfigSnapshotToDomain(raw.Config),
 	}
+	if raw.Config.ShadowAdapter != nil {
+		d.ShadowAdapter = traffictesting.ShadowAdapterSnapshot{
+			Type:    raw.Config.ShadowAdapter.Type,
+			Version: raw.Config.ShadowAdapter.Version,
+		}
+	}
+	return d
 }
 
-func mapDiffConfigToPersistence(cfg traffictesting.DiffConfig) schema.DiffConfigSnapshot {
-	return schema.DiffConfigSnapshot{
+func mapDiffConfigToPersistence(d traffictesting.Diff) schema.DiffConfigSnapshot {
+	cfg := d.Config
+	snapshot := schema.DiffConfigSnapshot{
 		SortArrays:     cfg.SortArrays,
 		IgnoredFields:  cfg.IgnoredFields,
 		IncludedFields: cfg.IncludedFields,
 		FloatTolerance: cfg.FloatTolerance,
 	}
+	if !d.ShadowAdapter.IsZero() {
+		snapshot.ShadowAdapter = &schema.ShadowAdapterSnapshot{
+			Type:    d.ShadowAdapter.Type,
+			Version: d.ShadowAdapter.Version,
+		}
+	}
+	return snapshot
 }
 
 func mapDiffConfigSnapshotToDomain(s schema.DiffConfigSnapshot) traffictesting.DiffConfig {

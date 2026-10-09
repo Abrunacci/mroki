@@ -1,10 +1,11 @@
 type: object
 title: DiffDetail
-description: Diff content and the diff config snapshot used to compute it.
+description: Diff content, and the diff config and shadow adapter snapshots used to compute it.
 additionalProperties: false
 required:
   - content
   - config
+  - shadow_adapter
 properties:
   content:
     type: array
@@ -13,3 +14,8 @@ properties:
       $ref: "./PatchOp.yaml"
   config:
     $ref: "./DiffConfig.yaml"
+  shadow_adapter:
+    description: Shadow adapter and mapping version the diff was computed with, or null when none was used.
+    oneOf:
+      - $ref: "./DiffShadowAdapter.yaml"
+      - type: "null"
