@@ -17,12 +17,17 @@ import (
 // the gate to the global retention floor, and a non-empty Go duration string
 // sets a custom retention (which must be >= the global floor). Surrounding
 // whitespace is trimmed before parsing.
+//
+// ShadowAdapter is also tri-state: nil leaves the current adapter untouched,
+// a pointer to the zero ShadowAdapterProps removes it, and any other value
+// replaces it (and therefore its mapping version).
 type UpdateGateCommand struct {
 	ID          string
 	Name        *string
 	DiffConfig  *UpdateDiffConfigProps
 	RedactedFields *UpdateRedactedFieldsProps
 	Retention   *string
+	ShadowAdapter *ShadowAdapterProps
 }
 
 // UpdateDiffConfigProps holds the diff configuration fields for update.
@@ -114,6 +119,19 @@ func (h *UpdateGateHandler) Handle(ctx context.Context, cmd UpdateGateCommand) (
 					traffictesting.ErrRetentionBelowMinimum, retention.Duration(), h.globalRetention)
 			}
 			gate.Retention = retention
+		}
+	}
+
+	// Apply shadow adapter if provided. The zero props remove it.
+	if cmd.ShadowAdapter != nil {
+		if *cmd.ShadowAdapter == (ShadowAdapterProps{}) {
+			gate.ShadowAdapter = traffictesting.NoShadowAdapter()
+		} else {
+			adapter, err := traffictesting.ParseShadowAdapter(cmd.ShadowAdapter.Type, cmd.ShadowAdapter.Config)
+			if err != nil {
+				return nil, err
+			}
+			gate.ShadowAdapter = adapter
 		}
 	}
 

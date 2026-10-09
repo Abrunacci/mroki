@@ -1,0 +1,45 @@
+type: object
+title: ShadowAdapter
+description: |
+  Makes a shadow service that speaks a different protocol comparable with live.
+  With the `graphql` type, mroki-proxy rewrites each REST request sent to shadow
+  into a GraphQL query, and mroki-api normalizes the GraphQL response back into
+  the REST shape before diffing. Only the (normalized) bodies are compared.
+additionalProperties: false
+required:
+  - type
+  - config
+properties:
+  type:
+    type: string
+    enum:
+      - graphql
+    description: Adapter type.
+    example: "graphql"
+  config:
+    type: string
+    description: |
+      Adapter configuration document, stored verbatim. For `graphql`, the YAML
+      REST → GraphQL mapping (the same format as `MROKI_APP_GRAPHQL_CONFIG` in
+      standalone mode).
+    example: |
+      endpoint: /graphql
+      routes:
+        - match: GET /bookings/{id}
+          query: |
+            query GetBooking($id: ID!) { booking(id: $id) { id guestName } }
+          variables:
+            id: path.id
+          response:
+            root: data.booking
+            fields:
+              id: id
+              guest_name: guestName
+  version:
+    type: string
+    readOnly: true
+    description: |
+      Identifies the mapping: the first 12 hex characters of the SHA-256 of the
+      type and config. Any edit produces a new version. Ignored on create and
+      update.
+    example: "3f2a9c41d07b"

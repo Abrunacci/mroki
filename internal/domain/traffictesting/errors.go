@@ -15,6 +15,7 @@ var (
 	ErrInvalidRedactedFields = errors.New("invalid redacted fields")
 	ErrInvalidRetention       = errors.New("invalid retention")
 	ErrRetentionBelowMinimum  = errors.New("retention below global minimum")
+	ErrInvalidShadowAdapter = errors.New("invalid shadow adapter")
 
 	// Request errors
 	ErrRequestNotFound  = errors.New("request not found")

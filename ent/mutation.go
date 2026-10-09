@@ -897,6 +897,7 @@ type GateMutation struct {
 	redacted_fields            *[]string
 	appendredacted_fields      []string
 	retention                  *string
+	shadow_adapter             **schema.ShadowAdapterConfig
 	clearedFields              map[string]struct{}
 	requests                   map[uuid.UUID]struct{}
 	removedrequests            map[uuid.UUID]struct{}
@@ -1517,6 +1518,55 @@ func (m *GateMutation) ResetRetention() {
 	delete(m.clearedFields, gate.FieldRetention)
 }
 
+// SetShadowAdapter sets the "shadow_adapter" field.
+func (m *GateMutation) SetShadowAdapter(sac *schema.ShadowAdapterConfig) {
+	m.shadow_adapter = &sac
+}
+
+// ShadowAdapter returns the value of the "shadow_adapter" field in the mutation.
+func (m *GateMutation) ShadowAdapter() (r *schema.ShadowAdapterConfig, exists bool) {
+	v := m.shadow_adapter
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldShadowAdapter returns the old "shadow_adapter" field's value of the Gate entity.
+// If the Gate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GateMutation) OldShadowAdapter(ctx context.Context) (v *schema.ShadowAdapterConfig, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldShadowAdapter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldShadowAdapter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldShadowAdapter: %w", err)
+	}
+	return oldValue.ShadowAdapter, nil
+}
+
+// ClearShadowAdapter clears the value of the "shadow_adapter" field.
+func (m *GateMutation) ClearShadowAdapter() {
+	m.shadow_adapter = nil
+	m.clearedFields[gate.FieldShadowAdapter] = struct{}{}
+}
+
+// ShadowAdapterCleared returns if the "shadow_adapter" field was cleared in this mutation.
+func (m *GateMutation) ShadowAdapterCleared() bool {
+	_, ok := m.clearedFields[gate.FieldShadowAdapter]
+	return ok
+}
+
+// ResetShadowAdapter resets all changes to the "shadow_adapter" field.
+func (m *GateMutation) ResetShadowAdapter() {
+	m.shadow_adapter = nil
+	delete(m.clearedFields, gate.FieldShadowAdapter)
+}
+
 // AddRequestIDs adds the "requests" edge to the Request entity by ids.
 func (m *GateMutation) AddRequestIDs(ids ...uuid.UUID) {
 	if m.requests == nil {
@@ -1605,7 +1655,7 @@ func (m *GateMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GateMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.name != nil {
 		fields = append(fields, gate.FieldName)
 	}
@@ -1636,6 +1686,9 @@ func (m *GateMutation) Fields() []string {
 	if m.retention != nil {
 		fields = append(fields, gate.FieldRetention)
 	}
+	if m.shadow_adapter != nil {
+		fields = append(fields, gate.FieldShadowAdapter)
+	}
 	return fields
 }
 
@@ -1664,6 +1717,8 @@ func (m *GateMutation) Field(name string) (ent.Value, bool) {
 		return m.RedactedFields()
 	case gate.FieldRetention:
 		return m.Retention()
+	case gate.FieldShadowAdapter:
+		return m.ShadowAdapter()
 	}
 	return nil, false
 }
@@ -1693,6 +1748,8 @@ func (m *GateMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRedactedFields(ctx)
 	case gate.FieldRetention:
 		return m.OldRetention(ctx)
+	case gate.FieldShadowAdapter:
+		return m.OldShadowAdapter(ctx)
 	}
 	return nil, fmt.Errorf("unknown Gate field %s", name)
 }
@@ -1772,6 +1829,13 @@ func (m *GateMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRetention(v)
 		return nil
+	case gate.FieldShadowAdapter:
+		v, ok := value.(*schema.ShadowAdapterConfig)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetShadowAdapter(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Gate field %s", name)
 }
@@ -1835,6 +1899,9 @@ func (m *GateMutation) ClearedFields() []string {
 	if m.FieldCleared(gate.FieldRetention) {
 		fields = append(fields, gate.FieldRetention)
 	}
+	if m.FieldCleared(gate.FieldShadowAdapter) {
+		fields = append(fields, gate.FieldShadowAdapter)
+	}
 	return fields
 }
 
@@ -1866,6 +1933,9 @@ func (m *GateMutation) ClearField(name string) error {
 		return nil
 	case gate.FieldRetention:
 		m.ClearRetention()
+		return nil
+	case gate.FieldShadowAdapter:
+		m.ClearShadowAdapter()
 		return nil
 	}
 	return fmt.Errorf("unknown Gate nullable field %s", name)
@@ -1904,6 +1974,9 @@ func (m *GateMutation) ResetField(name string) error {
 		return nil
 	case gate.FieldRetention:
 		m.ResetRetention()
+		return nil
+	case gate.FieldShadowAdapter:
+		m.ResetShadowAdapter()
 		return nil
 	}
 	return fmt.Errorf("unknown Gate field %s", name)
@@ -2330,8 +2403,8 @@ func (m *RequestMutation) ResetHeaders() {
 }
 
 // SetBody sets the "body" field.
-func (m *RequestMutation) SetBody(jm json.RawMessage) {
-	m.body = &jm
+func (m *RequestMutation) SetBody(j json.RawMessage) {
+	m.body = &j
 	m.appendbody = nil
 }
 
@@ -2361,9 +2434,9 @@ func (m *RequestMutation) OldBody(ctx context.Context) (v json.RawMessage, err e
 	return oldValue.Body, nil
 }
 
-// AppendBody adds jm to the "body" field.
-func (m *RequestMutation) AppendBody(jm json.RawMessage) {
-	m.appendbody = append(m.appendbody, jm...)
+// AppendBody adds j to the "body" field.
+func (m *RequestMutation) AppendBody(j json.RawMessage) {
+	m.appendbody = append(m.appendbody, j...)
 }
 
 // AppendedBody returns the list of values that were appended to the "body" field in this mutation.
@@ -3235,8 +3308,8 @@ func (m *ResponseMutation) ResetHeaders() {
 }
 
 // SetBody sets the "body" field.
-func (m *ResponseMutation) SetBody(jm json.RawMessage) {
-	m.body = &jm
+func (m *ResponseMutation) SetBody(j json.RawMessage) {
+	m.body = &j
 	m.appendbody = nil
 }
 
@@ -3266,9 +3339,9 @@ func (m *ResponseMutation) OldBody(ctx context.Context) (v json.RawMessage, err 
 	return oldValue.Body, nil
 }
 
-// AppendBody adds jm to the "body" field.
-func (m *ResponseMutation) AppendBody(jm json.RawMessage) {
-	m.appendbody = append(m.appendbody, jm...)
+// AppendBody adds j to the "body" field.
+func (m *ResponseMutation) AppendBody(j json.RawMessage) {
+	m.appendbody = append(m.appendbody, j...)
 }
 
 // AppendedBody returns the list of values that were appended to the "body" field in this mutation.

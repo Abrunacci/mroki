@@ -9,9 +9,19 @@ import (
 type Diff struct {
 	Content []diff.PatchOp
 	Config  DiffConfig
+	// ShadowAdapter records the adapter and mapping version the diff was
+	// computed with. When set, only the (normalized) bodies were compared.
+	ShadowAdapter ShadowAdapterSnapshot
 }
 
 type diffOption func(*Diff)
+
+// WithDiffShadowAdapter records the shadow adapter the diff was computed with.
+func WithDiffShadowAdapter(s ShadowAdapterSnapshot) diffOption {
+	return func(d *Diff) {
+		d.ShadowAdapter = s
+	}
+}
 
 func NewDiff(content []diff.PatchOp, config DiffConfig, opts ...diffOption) (*Diff, error) {
 	d := &Diff{
@@ -39,9 +49,12 @@ func (d Diff) HasContent() bool {
 	return len(d.Content) > 0
 }
 
-// Equals checks value equality by comparing Content and Config.
+// Equals checks value equality by comparing Content, Config and ShadowAdapter.
 func (d Diff) Equals(other Diff) bool {
 	if !reflect.DeepEqual(d.Content, other.Content) {
+		return false
+	}
+	if d.ShadowAdapter != other.ShadowAdapter {
 		return false
 	}
 	return reflect.DeepEqual(d.Config, other.Config)

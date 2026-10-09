@@ -10,6 +10,7 @@ required:
   - diff_config
   - redacted_fields
   - retention
+  - shadow_adapter
   - created_at
   - stats
 properties:
@@ -48,6 +49,11 @@ properties:
       Per-gate retention as a Go duration string (e.g. `168h`). An empty string
       means the gate uses the global retention floor.
     example: "168h"
+  shadow_adapter:
+    description: Shadow adapter (e.g. REST live vs GraphQL shadow), or null when requests are compared as is.
+    oneOf:
+      - $ref: "./ShadowAdapter.yaml"
+      - type: "null"
   created_at:
     type: string
     format: date-time

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -51,6 +52,7 @@ type CreateRequestHandler struct {
 	repo       traffictesting.RequestRepository
 	gateRepo   traffictesting.GateRepository
 	dispatcher events.Dispatcher
+	adapters   *services.ShadowAdapterCache
 }
 
 // CreateRequestOption configures a CreateRequestHandler.
@@ -67,7 +69,7 @@ func WithEventDispatcher(d events.Dispatcher) CreateRequestOption {
 
 // NewCreateRequestHandler creates a new CreateRequestHandler
 func NewCreateRequestHandler(repo traffictesting.RequestRepository, gateRepo traffictesting.GateRepository, opts ...CreateRequestOption) *CreateRequestHandler {
-	h := &CreateRequestHandler{repo: repo, gateRepo: gateRepo}
+	h := &CreateRequestHandler{repo: repo, gateRepo: gateRepo, adapters: services.NewShadowAdapterCache()}
 	for _, o := range opts {
 		o(h)
 	}
@@ -136,8 +138,22 @@ func (h *CreateRequestHandler) Handle(ctx context.Context, cmd CreateRequestComm
 		diffOpts = gate.DiffConfig.ToDiffOptions()
 	}
 
+	// A gate with a shadow adapter (e.g. REST live vs GraphQL shadow) compares
+	// normalized bodies only. The proxy already rewrote the shadow request with
+	// the same mapping; here both bodies are brought to the same shape.
+	var comparerOpts []services.ComparerOption
+	var adapterSnapshot traffictesting.ShadowAdapterSnapshot
+	if gateErr == nil && gate.ShadowAdapter.IsSet() {
+		normalizer, err := h.adapters.Get(gate.ShadowAdapter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load shadow adapter: %w", err)
+		}
+		comparerOpts = services.ShadowAdapterOptions(normalizer, method.String(), path.String(), nil)
+		adapterSnapshot = gate.ShadowAdapter.Snapshot()
+	}
+
 	// Redact all three inputs and compute diff
-	comparer := services.NewResponseComparer(redactor, diffOpts)
+	comparer := services.NewResponseComparer(redactor, diffOpts, comparerOpts...)
 	result, err := comparer.Compare(
 		services.ResponseData{Headers: cmd.Headers, Body: reqBodyDecoded},
 		services.ResponseData{StatusCode: cmd.LiveResponse.StatusCode, Headers: cmd.LiveResponse.Headers, Body: liveBodyDecoded},
@@ -193,7 +209,7 @@ func (h *CreateRequestHandler) Handle(ctx context.Context, cmd CreateRequestComm
 		diffConfig = gate.DiffConfig
 	}
 
-	d, err := traffictesting.NewDiff(diffContent, diffConfig)
+	d, err := traffictesting.NewDiff(diffContent, diffConfig, traffictesting.WithDiffShadowAdapter(adapterSnapshot))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create diff: %w", err)
 	}
@@ -271,6 +287,7 @@ func decodeBase64Body(body []byte) ([]byte, error) {
 
 // bodyToRawMessage converts a redacted body to json.RawMessage for JSONB storage.
 //   - JSON bodies: marshal the parsed tree (BodyParsed) to json.RawMessage
+//   - JSON null: stored as JSON null
 //   - Non-JSON bodies: wrap raw bytes as a JSON string value
 //   - Empty bodies: return nil (→ NULL in DB)
 func bodyToRawMessage(rawBody []byte, bodyParsed any) (json.RawMessage, error) {
@@ -283,6 +300,11 @@ func bodyToRawMessage(rawBody []byte, bodyParsed any) (json.RawMessage, error) {
 			return nil, fmt.Errorf("marshal parsed body: %w", err)
 		}
 		return json.RawMessage(b), nil
+	}
+	// A JSON null parses to a nil tree; keep it as JSON null rather than the
+	// string "null" (e.g. a GraphQL "not found" normalized to null).
+	if string(bytes.TrimSpace(rawBody)) == "null" {
+		return json.RawMessage("null"), nil
 	}
 	// Non-JSON body: store as a JSON string
 	return rawBytesToJSONString(rawBody)

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/pedrobarco/mroki/ent/gate"
+	"github.com/pedrobarco/mroki/ent/schema"
 )
 
 // Gate is the model entity for the Gate schema.
@@ -39,6 +40,8 @@ type Gate struct {
 	RedactedFields []string `json:"redacted_fields,omitempty"`
 	// Retention holds the value of the "retention" field.
 	Retention string `json:"retention,omitempty"`
+	// ShadowAdapter holds the value of the "shadow_adapter" field.
+	ShadowAdapter *schema.ShadowAdapterConfig `json:"shadow_adapter,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GateQuery when eager-loading is set.
 	Edges        GateEdges `json:"edges"`
@@ -68,7 +71,7 @@ func (*Gate) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case gate.FieldDiffIgnoredFields, gate.FieldDiffIncludedFields, gate.FieldRedactedFields:
+		case gate.FieldDiffIgnoredFields, gate.FieldDiffIncludedFields, gate.FieldRedactedFields, gate.FieldShadowAdapter:
 			values[i] = new([]byte)
 		case gate.FieldDiffSortArrays:
 			values[i] = new(sql.NullBool)
@@ -167,6 +170,14 @@ func (_m *Gate) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Retention = value.String
 			}
+		case gate.FieldShadowAdapter:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field shadow_adapter", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ShadowAdapter); err != nil {
+					return fmt.Errorf("unmarshal field shadow_adapter: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -237,6 +248,9 @@ func (_m *Gate) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("retention=")
 	builder.WriteString(_m.Retention)
+	builder.WriteString(", ")
+	builder.WriteString("shadow_adapter=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ShadowAdapter))
 	builder.WriteByte(')')
 	return builder.String()
 }

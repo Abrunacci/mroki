@@ -398,3 +398,60 @@ func TestGateRepository_GetAll_sort_by_shadow_url(t *testing.T) {
 	assert.Equal(t, "http://apple.example.com", result.Items[0].ShadowURL.String())
 	assert.Equal(t, "http://zebra.example.com", result.Items[1].ShadowURL.String())
 }
+
+const testGraphQLMapping = `endpoint: /graphql
+routes:
+  - match: GET /bookings/{id}
+    query: |
+      query GetBooking($id: ID!) { booking(id: $id) { id } }
+    variables:
+      id: path.id
+    response:
+      root: data.booking
+      fields:
+        id: id
+`
+
+func TestGateRepository_ShadowAdapter_round_trip(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer func() { _ = client.Close() }()
+
+	repo := ent.NewGateRepository(client)
+
+	liveURL, _ := traffictesting.ParseGateURL("http://live.example.com")
+	shadowURL, _ := traffictesting.ParseGateURL("http://shadow.example.com")
+	adapter, err := traffictesting.ParseShadowAdapter("graphql", testGraphQLMapping)
+	require.NoError(t, err)
+	gate, _ := traffictesting.NewGate(nextGateName(), liveURL, shadowURL, traffictesting.WithGateShadowAdapter(adapter))
+	require.NoError(t, repo.Save(context.Background(), gate))
+
+	saved, err := repo.GetByID(context.Background(), gate.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "graphql", saved.ShadowAdapter.Type())
+	assert.Equal(t, testGraphQLMapping, saved.ShadowAdapter.Config())
+	assert.Equal(t, adapter.Version(), saved.ShadowAdapter.Version())
+
+	// Removing the adapter clears the column.
+	saved.ShadowAdapter = traffictesting.NoShadowAdapter()
+	require.NoError(t, repo.Update(context.Background(), saved))
+
+	cleared, err := repo.GetByID(context.Background(), gate.ID)
+	require.NoError(t, err)
+	assert.False(t, cleared.ShadowAdapter.IsSet())
+}
+
+func TestGateRepository_Save_without_shadow_adapter(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer func() { _ = client.Close() }()
+
+	repo := ent.NewGateRepository(client)
+
+	liveURL, _ := traffictesting.ParseGateURL("http://live.example.com")
+	shadowURL, _ := traffictesting.ParseGateURL("http://shadow.example.com")
+	gate, _ := traffictesting.NewGate(nextGateName(), liveURL, shadowURL)
+	require.NoError(t, repo.Save(context.Background(), gate))
+
+	raw, err := client.Gate.Get(context.Background(), gate.ID.UUID())
+	require.NoError(t, err)
+	assert.Nil(t, raw.ShadowAdapter, "gates without an adapter store NULL")
+}

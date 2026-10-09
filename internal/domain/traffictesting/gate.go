@@ -10,6 +10,9 @@ type Gate struct {
 	DiffConfig  DiffConfig
 	RedactedFields RedactedFields
 	Retention   Retention
+	// ShadowAdapter optionally translates shadow requests and normalizes both
+	// responses before diffing (e.g. REST live vs GraphQL shadow).
+	ShadowAdapter ShadowAdapter
 	CreatedAt   time.Time
 }
 
@@ -42,6 +45,12 @@ func WithGateRedactedFields(rf RedactedFields) gateOption {
 func WithGateRetention(r Retention) gateOption {
 	return func(g *Gate) {
 		g.Retention = r
+	}
+}
+
+func WithGateShadowAdapter(a ShadowAdapter) gateOption {
+	return func(g *Gate) {
+		g.ShadowAdapter = a
 	}
 }
 

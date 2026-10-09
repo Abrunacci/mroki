@@ -83,6 +83,11 @@ func main() {
 	var liveURL, shadowURL *url.URL
 	var apiClient *client.MrokiClient
 
+	// REST → GraphQL mapping: from the gate in API mode, or from
+	// GRAPHQL_CONFIG in standalone mode (config validation rejects both).
+	var gqlCfg *graphql.Config
+	var gqlSource slog.Attr
+
 	if cfg.App.APIURL != nil && cfg.App.GateID != "" && cfg.App.APIKey != "" {
 		// API Mode: Fetch gate configuration from API
 		logger.Info("starting in API mode",
@@ -141,6 +146,23 @@ func main() {
 			"live_url", liveURL.String(),
 			"shadow_url", shadowURL.String(),
 		)
+
+		// The gate may carry a shadow adapter (e.g. REST live vs GraphQL
+		// shadow). The proxy only rewrites shadow requests with it; mroki-api
+		// normalizes the responses with the same mapping when it diffs them.
+		if gate.ShadowAdapter != nil {
+			if gate.ShadowAdapter.Type != "graphql" {
+				logger.Error("unsupported shadow adapter type received from API", slog.String("type", gate.ShadowAdapter.Type))
+				return
+			}
+			mapping, err := graphql.ParseConfig([]byte(gate.ShadowAdapter.Config))
+			if err != nil {
+				logger.Error("invalid shadow adapter received from API", slog.String("error", err.Error()))
+				return
+			}
+			gqlCfg = &mapping
+			gqlSource = slog.String("gate_mapping_version", gate.ShadowAdapter.Version)
+		}
 
 	} else {
 		// Standalone Mode: Use URLs from .env
@@ -218,23 +240,27 @@ func main() {
 		slog.Int("base_rules", len(baseShadowRules)),
 	)
 
-	// Optional REST → GraphQL adapter (standalone mode only; enforced by config
-	// validation). Loaded at startup so a bad mapping fails fast.
-	var shadowAdapter handlers.ShadowAdapter
+	// Optional REST → GraphQL adapter. Loaded at startup so a bad mapping
+	// fails fast.
 	if cfg.App.GraphQLConfig != "" {
-		gqlCfg, err := graphql.LoadConfig(cfg.App.GraphQLConfig)
+		fileCfg, err := graphql.LoadConfig(cfg.App.GraphQLConfig)
 		if err != nil {
 			logger.Error("invalid GRAPHQL_CONFIG", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
-		adapter, err := graphql.New(gqlCfg)
+		gqlCfg = &fileCfg
+		gqlSource = slog.String("file", cfg.App.GraphQLConfig)
+	}
+	var shadowAdapter handlers.ShadowAdapter
+	if gqlCfg != nil {
+		adapter, err := graphql.New(*gqlCfg)
 		if err != nil {
-			logger.Error("invalid GRAPHQL_CONFIG", slog.String("error", err.Error()))
+			logger.Error("invalid graphql mapping", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 		shadowAdapter = adapter
 		logger.Info("graphql shadow adapter configured",
-			slog.String("file", cfg.App.GraphQLConfig),
+			gqlSource,
 			slog.String("endpoint", gqlCfg.Endpoint),
 			slog.Int("routes", len(gqlCfg.Routes)),
 		)
@@ -286,7 +312,7 @@ func main() {
 		APITimeout:          cfg.App.APITimeout, // overall deadline for API calls
 		DiffOptions:         diffOpts,           // Only used in standalone mode
 		Redactor:            redactor,           // Only used in standalone mode
-		ShadowAdapter:       shadowAdapter,      // nil unless GRAPHQL_CONFIG is set
+		ShadowAdapter:       shadowAdapter,      // nil unless the gate or GRAPHQL_CONFIG has a mapping
 		Recorder:            recorder,           // shared domain comparison metrics; nil if disabled
 		InstrumentTransport: instrumentUpstream, // nil if metrics disabled
 	}

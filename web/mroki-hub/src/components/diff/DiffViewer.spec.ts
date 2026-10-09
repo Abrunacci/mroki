@@ -180,3 +180,51 @@ describe('DiffViewer ignore-field affordance', () => {
     expect(btn.exists()).toBe(false)
   })
 })
+
+describe('DiffViewer body-only comparisons', () => {
+  function mountBodyOnly(bodyOnly: boolean, shadowBody: unknown = { id: '1' }) {
+    return mount(DiffViewer, {
+      props: {
+        liveResponse: makeResponse({ id: 1 }, { 'X-Legacy': ['1'] }),
+        shadowResponse: makeResponse(shadowBody, { 'X-Graphql': ['1'] }),
+        diffContent: [{ op: 'replace', path: '/body/id', value: '1' }],
+        diffConfig: makeConfig(),
+        bodyOnly,
+      },
+      global,
+    })
+  }
+
+  it('leaves headers out of the view when only bodies were compared', async () => {
+    const wrapper = mountBodyOnly(true)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('"headers"')
+    expect(wrapper.text()).not.toContain('header')
+    expect(wrapper.text()).toContain('"id"')
+  })
+
+  it('still shows headers for regular comparisons', async () => {
+    const wrapper = mountBodyOnly(false)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('"headers"')
+  })
+
+  it('treats a JSON null body as JSON, not as text', async () => {
+    const wrapper = mount(DiffViewer, {
+      props: {
+        liveResponse: makeResponse({ id: 1 }),
+        shadowResponse: makeResponse(null),
+        diffContent: [{ op: 'replace', path: '/body', value: null }],
+        diffConfig: makeConfig(),
+        bodyOnly: true,
+      },
+      global,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('json')
+    expect(wrapper.text()).toContain('null')
+  })
+})

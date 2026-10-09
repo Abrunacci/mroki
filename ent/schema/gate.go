@@ -49,7 +49,18 @@ func (Gate) Fields() []ent.Field {
 		// Empty means the gate falls back to the global retention floor.
 		field.String("retention").
 			Optional(),
+		// Optional shadow adapter (e.g. REST live vs GraphQL shadow): its type
+		// and configuration document. NULL means requests are compared as is.
+		field.JSON("shadow_adapter", &ShadowAdapterConfig{}).
+			Optional(),
 	}
+}
+
+// ShadowAdapterConfig is the storage representation of a gate's shadow
+// adapter. Config is kept verbatim (e.g. the YAML mapping, with comments).
+type ShadowAdapterConfig struct {
+	Type   string `json:"type"`
+	Config string `json:"config"`
 }
 
 // Edges of the Gate.

@@ -17,6 +17,12 @@ import { ChevronRight } from 'lucide-vue-next'
 interface Props {
   gateId: string
   filters: FilterState
+  /**
+   * The gate's current shadow adapter mapping version (null when none). Rows
+   * compared with a different mapping are flagged so diffs computed with
+   * different rules are not mistaken for one another.
+   */
+  mappingVersion?: string | null
 }
 
 const props = defineProps<Props>()
@@ -148,6 +154,10 @@ function nextPage() {
 
 function prevPage() {
   table.previousPage()
+}
+
+function usedOtherMapping(request: Request): boolean {
+  return request.shadow_adapter != null && request.shadow_adapter.version !== props.mappingVersion
 }
 
 function handleRequestClick(requestId: string) {
@@ -285,6 +295,21 @@ const truncatedQueries = computed(() => {
             <div
               class="flex items-center gap-x-4 gap-y-1 flex-wrap pl-[4.25rem] sm:flex-nowrap sm:shrink-0 sm:ml-4 sm:pl-0"
             >
+              <!-- Mapping version badge: only when it differs from the gate's current one -->
+              <Tooltip v-if="usedOtherMapping(request)">
+                <TooltipTrigger as-child>
+                  <span
+                    class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning whitespace-nowrap cursor-default"
+                  >
+                    Other mapping
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="max-w-xs">
+                  Compared with mapping
+                  <code class="font-mono">{{ request.shadow_adapter!.version }}</code
+                  >, not the gate's current one.
+                </TooltipContent>
+              </Tooltip>
               <!-- Diff badge -->
               <span
                 v-if="request.has_diff"

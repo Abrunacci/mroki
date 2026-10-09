@@ -190,18 +190,21 @@ Configure how responses are compared. These options only apply in **Standalone m
 
 ### GraphQL Shadow Adapter
 
-Compare a REST live service against a GraphQL shadow service (e.g. during a REST → GraphQL migration). **Standalone mode only** — the proxy refuses to start if this is combined with API mode.
+Compare a REST live service against a GraphQL shadow service (e.g. during a REST → GraphQL migration). The same YAML mapping is used in both modes:
+
+- **Standalone mode:** point `MROKI_APP_GRAPHQL_CONFIG` at the file. The proxy rewrites the requests, normalizes the responses and logs the diff.
+- **API mode:** store the mapping on the gate as its `shadow_adapter` (`{"type": "graphql", "config": "<the YAML>"}`, see `POST /gates` and `PATCH /gates/{gate_id}` in the [API reference](../api/REFERENCE.md)). The proxy reads it with the gate at startup and rewrites the requests; mroki-api normalizes the responses before diffing, and the hub shows the comparison. Each diff records the **mapping version** (a hash of the mapping) it was computed with, and the hub flags requests compared with a mapping other than the gate's current one. Restart the proxy after changing the mapping. `MROKI_APP_GRAPHQL_CONFIG` is rejected in API mode, so the proxy and the API always use the same mapping.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `MROKI_APP_GRAPHQL_CONFIG` | No | _(none)_ | Path to a YAML REST → GraphQL mapping file. When set, matching REST requests are sent to shadow as GraphQL queries and the responses are normalized back into the REST shape before diffing. |
+| `MROKI_APP_GRAPHQL_CONFIG` | No | _(none)_ | Standalone mode only. Path to a YAML REST → GraphQL mapping file. When set, matching REST requests are sent to shadow as GraphQL queries and the responses are normalized back into the REST shape before diffing. |
 
 When the adapter is enabled:
 
 - Each request is matched against the mapping's routes (Go [`http.ServeMux` patterns](https://pkg.go.dev/net/http#hdr-Patterns), e.g. `GET /bookings/{id}`). A match is sent to shadow as `POST <endpoint>` with a JSON body `{"query": ..., "variables": ...}`; client headers are forwarded. Requests that match **no route are not shadowed**.
 - The GraphQL response is normalized: the object at `response.root` is extracted and each mapped GraphQL field is renamed to its REST field. A missing or `null` root becomes `null`.
 - **Only mapped fields are compared**, on both sides, and **only bodies are compared** (status codes and headers are left out, since GraphQL typically answers `200` even for errors). Diff options and redaction paths use the REST field names.
-- Only queries are accepted; `mutation` and `subscription` operations are rejected at startup. The base shadow rules still apply to the incoming REST request.
+- Only queries are accepted; `mutation` and `subscription` operations are rejected (at startup, or when the gate is saved in API mode). The base shadow rules still apply to the incoming REST request.
 
 ```yaml
 endpoint: /graphql            # GraphQL path on the shadow URL

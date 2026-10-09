@@ -38,6 +38,19 @@ export interface DiffConfig {
 }
 
 /**
+ * ShadowAdapter makes a shadow service that speaks a different protocol
+ * comparable with live (e.g. REST live vs GraphQL shadow).
+ */
+export interface ShadowAdapter {
+  /** Adapter type, e.g. "graphql". */
+  type: string
+  /** Configuration document, stored verbatim (for graphql, the YAML mapping). */
+  config: string
+  /** Mapping version: a hash of type and config; changes on any edit. */
+  version: string
+}
+
+/**
  * Gate represents a live/shadow service pair
  */
 export interface Gate {
@@ -49,6 +62,8 @@ export interface Gate {
   redacted_fields: string[]
   /** Per-gate retention as a Go duration string (e.g. "168h"); empty = use global. */
   retention: string
+  /** Null when requests are compared as is. */
+  shadow_adapter: ShadowAdapter | null
   created_at: string
   stats: GateStats
 }
@@ -73,6 +88,8 @@ export interface Request {
   live_response: ResponseSummary | null
   shadow_response: ResponseSummary | null
   has_diff: boolean
+  /** Adapter and mapping version the diff was computed with, or null. */
+  shadow_adapter: DiffShadowAdapter | null
 }
 
 /**
@@ -102,6 +119,19 @@ export interface PatchOp {
 export interface Diff {
   content: PatchOp[]
   config: DiffConfig
+  /**
+   * Adapter and mapping version the diff was computed with, or null. When set,
+   * only the normalized bodies were compared (not status codes or headers).
+   */
+  shadow_adapter: DiffShadowAdapter | null
+}
+
+/**
+ * DiffShadowAdapter identifies the shadow adapter mapping a diff was computed with.
+ */
+export interface DiffShadowAdapter {
+  type: string
+  version: string
 }
 
 /**

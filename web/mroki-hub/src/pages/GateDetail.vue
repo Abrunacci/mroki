@@ -10,6 +10,7 @@ import type { FilterState } from '@/components/requests/RequestFilters.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, Settings } from 'lucide-vue-next'
+import ShadowAdapterBadge from '@/components/gates/ShadowAdapterBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,6 +82,11 @@ function goBack() {
           <div>
             <div class="flex items-center gap-2.5 mb-1.5">
               <h1 class="text-xl font-semibold tracking-tight">{{ gate.name }}</h1>
+              <ShadowAdapterBadge
+                v-if="gate.shadow_adapter"
+                :type="gate.shadow_adapter.type"
+                :version="gate.shadow_adapter.version"
+              />
             </div>
             <code class="text-xs font-mono text-dim">{{ gate.id }}</code>
           </div>
@@ -166,6 +172,7 @@ function goBack() {
       <RequestList
         :gate-id="gateId"
         :filters="filters"
+        :mapping-version="gate.shadow_adapter?.version ?? null"
         @update:total="requestTotal = $event"
         @update:showing="requestShowing = $event"
       />

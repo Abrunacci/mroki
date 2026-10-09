@@ -1269,3 +1269,10 @@ func TestCreateRequestHandler_Handle_NoDispatchOnSaveError(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, dispatcher.events, "no event dispatched when save fails")
 }
+
+func TestBodyToRawMessage_json_null_body(t *testing.T) {
+	result, err := bodyToRawMessage([]byte("null"), nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, json.RawMessage("null"), result)
+}

@@ -34,7 +34,9 @@ import {
   Check,
   Info,
   Clock,
+  ArrowRightLeft,
 } from 'lucide-vue-next'
+import ShadowAdapterBadge from '@/components/gates/ShadowAdapterBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -648,6 +650,34 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Section: Shadow Adapter (read-only; set through the API) -->
+        <div
+          v-if="gate?.shadow_adapter"
+          class="bg-card border border-border rounded-xl overflow-hidden"
+          data-testid="shadow-adapter-section"
+        >
+          <div class="px-5 py-4 border-b border-border/50">
+            <div class="flex items-center gap-2 mb-1">
+              <ArrowRightLeft class="h-4 w-4 text-info" aria-hidden="true" />
+              <h2 class="text-sm font-semibold tracking-tight">Shadow Adapter</h2>
+              <ShadowAdapterBadge
+                :type="gate.shadow_adapter.type"
+                :version="gate.shadow_adapter.version"
+              />
+            </div>
+            <p class="text-xs text-dim leading-relaxed">
+              The proxy rewrites each mapped request for shadow with this mapping, and the API
+              normalizes the shadow response to the live shape before comparing bodies. Read-only
+              here: change it with <code class="font-mono">PATCH /gates/{id}</code> and restart
+              mroki-proxy. Each request records the mapping version it was compared with.
+            </p>
+          </div>
+          <pre
+            class="p-5 text-xs font-mono text-muted-foreground overflow-x-auto leading-relaxed"
+            >{{ gate.shadow_adapter.config }}</pre
+          >
         </div>
 
         <!-- Section: Danger Zone -->

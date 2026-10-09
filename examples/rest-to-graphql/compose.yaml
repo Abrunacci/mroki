@@ -1,0 +1,116 @@
+# REST → GraphQL example with the full mroki stack, in one command:
+#
+#   docker compose -f examples/rest-to-graphql/compose.yaml up --build
+#
+# Then open the hub at http://localhost:3000. See README.md in this directory.
+name: mroki-rest-to-graphql
+
+x-api-key: &api-key mroki-example-api-key-16
+
+services:
+  # --- The two systems being compared -------------------------------------
+
+  legacy:
+    build: &example-build
+      context: ../..
+      dockerfile: examples/rest-to-graphql/Dockerfile
+    command: ["legacy"]
+
+  graphql:
+    build: *example-build
+    command: ["graphql"]
+
+  # --- mroki ----------------------------------------------------------------
+
+  mroki-db:
+    extends:
+      file: ../../build/package/mroki-db/compose.yaml
+      service: mroki-db
+    environment:
+      POSTGRES_PASSWORD: postgres
+
+  mroki-db-migrator:
+    extends:
+      file: ../../build/package/mroki-db-migrator/compose.yaml
+      service: mroki-db-migrator
+    command: ["--url", "postgres://postgres:postgres@mroki-db:5432/postgres?sslmode=disable"]
+    depends_on:
+      mroki-db:
+        condition: service_healthy
+
+  mroki-api:
+    extends:
+      file: ../../build/package/mroki-api/compose.yaml
+      service: mroki-api
+    environment:
+      MROKI_APP_DATABASE_URL: postgres://postgres:postgres@mroki-db:5432/postgres
+      MROKI_APP_API_KEY: *api-key
+      MROKI_APP_CORS_ORIGINS: http://localhost:${MROKI_HUB_PORT:-3000}
+    depends_on:
+      mroki-db-migrator:
+        condition: service_completed_successfully
+
+  # Creates the gate through the API with mapping.yaml as its shadow adapter
+  # (or updates the mapping if the gate already exists), and leaves the gate
+  # ID in a shared volume for the proxy.
+  gate-setup:
+    build: *example-build
+    command: ["setup", "--gate-id-file", "/shared/gate-id"]
+    environment:
+      MROKI_API_URL: http://mroki-api:${MROKI_API_PORT:-8090}
+      MROKI_API_KEY: *api-key
+    volumes:
+      - gate-id:/shared
+      # Mounted so an edited mapping.yaml is picked up without rebuilding.
+      - ./mapping.yaml:/example/mapping.yaml:ro
+    user: "0"
+    depends_on:
+      mroki-api:
+        condition: service_healthy
+    restart: "no"
+
+  mroki-proxy:
+    extends:
+      file: ../../build/package/mroki-proxy/compose.yaml
+      service: mroki-proxy
+    # API mode: the proxy reads the gate (URLs and GraphQL mapping) from the API.
+    entrypoint: ["sh", "-c", "MROKI_APP_GATE_ID=$$(cat /shared/gate-id) exec ./mroki-proxy"]
+    environment:
+      MROKI_APP_API_URL: http://mroki-api:${MROKI_API_PORT:-8090}
+      MROKI_APP_API_KEY: *api-key
+      MROKI_APP_LOG_LEVEL: debug
+      MROKI_APP_LOG_FORMAT: text
+    volumes:
+      - gate-id:/shared:ro
+    depends_on:
+      gate-setup:
+        condition: service_completed_successfully
+      legacy:
+        condition: service_started
+      graphql:
+        condition: service_started
+
+  mroki-hub:
+    extends:
+      file: ../../build/package/mroki-hub/compose.yaml
+      service: mroki-hub
+    environment:
+      # The browser calls the API directly, so this is the host address.
+      MROKI_APP_API_BASE_URL: http://localhost:${MROKI_API_PORT:-8090}
+      MROKI_APP_API_KEY: *api-key
+    depends_on:
+      mroki-api:
+        condition: service_healthy
+
+  # Sends the sample requests through the proxy once everything is up.
+  traffic:
+    build: *example-build
+    command: ["traffic", "--proxy-url", "http://mroki-proxy:${MROKI_PROXY_PORT:-8080}"]
+    depends_on:
+      mroki-proxy:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  mroki-db-data:
+  gate-id:

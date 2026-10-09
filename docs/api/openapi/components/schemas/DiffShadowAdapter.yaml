@@ -1,0 +1,18 @@
+type: object
+title: DiffShadowAdapter
+description: |
+  The shadow adapter and mapping version a diff was computed with. When present,
+  only the normalized bodies were compared (status codes and headers were not).
+additionalProperties: false
+required:
+  - type
+  - version
+properties:
+  type:
+    type: string
+    description: Adapter type.
+    example: "graphql"
+  version:
+    type: string
+    description: Version of the gate's mapping at computation time.
+    example: "3f2a9c41d07b"

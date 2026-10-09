@@ -250,7 +250,8 @@ func toRequestResponseDTO(req *traffictesting.Request) dto.Request {
 			StatusCode: req.ShadowResponse.StatusCode.Int(),
 			LatencyMs:  req.ShadowResponse.LatencyMs,
 		},
-		HasDiff: req.Diff.HasContent(),
+		HasDiff:       req.Diff.HasContent(),
+		ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff.ShadowAdapter),
 	}
 }
 
@@ -294,6 +295,14 @@ func toFullRequestResponseDTO(req *traffictesting.Request) dto.RequestDetail {
 				FloatTolerance: req.Diff.Config.FloatTolerance,
 				SortArrays:     req.Diff.Config.SortArrays,
 			},
+			ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff.ShadowAdapter),
 		},
 	}
+}
+
+func mapDiffShadowAdapterToDTO(s traffictesting.ShadowAdapterSnapshot) *dto.DiffShadowAdapter {
+	if s.IsZero() {
+		return nil
+	}
+	return &dto.DiffShadowAdapter{Type: s.Type, Version: s.Version}
 }
