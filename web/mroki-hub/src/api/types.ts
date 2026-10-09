@@ -88,6 +88,8 @@ export interface Request {
   live_response: ResponseSummary | null
   shadow_response: ResponseSummary | null
   has_diff: boolean
+  /** Adapter and mapping version the diff was computed with, or null. */
+  shadow_adapter: DiffShadowAdapter | null
 }
 
 /**

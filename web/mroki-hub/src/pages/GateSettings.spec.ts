@@ -49,6 +49,7 @@ function makeGate(overrides: Partial<Gate> = {}): Gate {
     },
     redacted_fields: [],
     retention: '',
+    shadow_adapter: null,
     created_at: '2026-03-29T09:00:00Z',
     stats: { request_count_24h: 0, diff_count_24h: 0, diff_rate: 0, last_active: null },
     ...overrides,
@@ -381,5 +382,33 @@ describe('GateSettings hardening', () => {
     wrapper.vm.onRetentionInput()
     await nextTick()
     expect(wrapper.vm.retentionServerError).toBeNull()
+  })
+})
+
+describe('GateSettings shadow adapter', () => {
+  beforeEach(() => {
+    getGate.mockReset()
+    getConfig.mockReset()
+    getConfig.mockResolvedValue({ data: { retention: '720h0m0s' } })
+  })
+
+  it('shows the mapping read-only when the gate has one', async () => {
+    const config = 'endpoint: /graphql\nroutes: []\n'
+    getGate.mockResolvedValue({
+      data: makeGate({ shadow_adapter: { type: 'graphql', config, version: '3f2a9c41d07b' } }),
+    })
+    const wrapper = mountShallow()
+    await flushPromises()
+
+    const section = wrapper.find('[data-testid="shadow-adapter-section"]')
+    expect(section.exists()).toBe(true)
+    expect(section.find('pre').text()).toBe(config.trim())
+    expect(section.find('textarea').exists()).toBe(false)
+  })
+
+  it('hides the section for regular gates', async () => {
+    const wrapper = await mountSettings()
+
+    expect(wrapper.find('[data-testid="shadow-adapter-section"]').exists()).toBe(false)
   })
 })

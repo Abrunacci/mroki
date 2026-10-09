@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { truncateId, diffRateColorClass } from '@/lib/utils'
 import { ChevronRight } from 'lucide-vue-next'
 import type { Gate } from '@/api'
+import ShadowAdapterBadge from '@/components/gates/ShadowAdapterBadge.vue'
 
 interface Props {
   gate: Gate
@@ -89,6 +90,7 @@ const hasEverBeenActive = computed(() => props.gate.stats.last_active !== null)
                 isRecent ? 'bg-success animate-pulse' : hasEverBeenActive ? 'bg-success' : 'bg-dim'
               "
             />
+            <ShadowAdapterBadge v-if="gate.shadow_adapter" :type="gate.shadow_adapter.type" />
           </div>
         </div>
       </div>

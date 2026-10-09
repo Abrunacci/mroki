@@ -27,6 +27,7 @@ function makeRequest(overrides: Partial<Request> = {}): Request {
     live_response: { status_code: 200, latency_ms: 10 },
     shadow_response: { status_code: 200, latency_ms: 12 },
     has_diff: false,
+    shadow_adapter: null,
     ...overrides,
   }
 }
@@ -339,5 +340,39 @@ describe('RequestList loading, error, and empty states', () => {
 
     expect(wrapper.text()).not.toContain('kaboom')
     expect(wrapper.findAll('[role="button"]')).toHaveLength(1)
+  })
+})
+
+describe('RequestList mapping version flag', () => {
+  async function mountWithVersion(requests: Request[], mappingVersion: string | null) {
+    getRequests.mockResolvedValue(makeResponse(requests))
+    const base = makeGlobal()
+    const slot = { template: '<span><slot /></span>' }
+    const wrapper = mount(RequestList, {
+      props: { gateId: 'gate-1', filters, mappingVersion },
+      global: { ...base, stubs: { ...base.stubs, Tooltip: slot, TooltipTrigger: slot } },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('flags rows compared with a mapping other than the gate current one', async () => {
+    const wrapper = await mountWithVersion(
+      [
+        makeRequest({ id: 'old', shadow_adapter: { type: 'graphql', version: 'aaaaaaaaaaaa' } }),
+        makeRequest({ id: 'new', shadow_adapter: { type: 'graphql', version: 'bbbbbbbbbbbb' } }),
+      ],
+      'bbbbbbbbbbbb'
+    )
+
+    const rows = wrapper.findAll('[role="button"]')
+    expect(rows[0]!.text()).toContain('Other mapping')
+    expect(rows[1]!.text()).not.toContain('Other mapping')
+  })
+
+  it('does not flag requests compared without an adapter', async () => {
+    const wrapper = await mountWithVersion([makeRequest()], null)
+
+    expect(wrapper.text()).not.toContain('Other mapping')
   })
 })

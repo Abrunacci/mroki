@@ -45,6 +45,7 @@ function makeGate(overrides: Partial<Gate> = {}): Gate {
     },
     redacted_fields: [],
     retention: '',
+    shadow_adapter: null,
     created_at: '2026-07-30T09:00:00Z',
     stats: { request_count_24h: 0, diff_count_24h: 0, diff_rate: 0, last_active: null },
     ...overrides,
@@ -76,6 +77,7 @@ function makeRequest(overrides: Partial<RequestDetailType> = {}): RequestDetailT
     diff: {
       content: [],
       config: { ignored_fields: [], included_fields: [], float_tolerance: 0, sort_arrays: false },
+      shadow_adapter: null,
     },
     ...overrides,
   }
@@ -85,7 +87,11 @@ function makeRequest(overrides: Partial<RequestDetailType> = {}): RequestDetailT
 const passthrough = { template: '<div><slot /></div>' }
 const global = {
   stubs: {
-    DiffViewer: { name: 'DiffViewer', template: '<div />' },
+    DiffViewer: {
+      name: 'DiffViewer',
+      props: ['liveResponse', 'shadowResponse', 'diffContent', 'diffConfig', 'bodyOnly'],
+      template: '<div />',
+    },
     Alert: passthrough,
     AlertTitle: passthrough,
     AlertDescription: passthrough,
@@ -271,5 +277,69 @@ describe('RequestDetail ignore field', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('conflict')
+  })
+})
+
+describe('RequestDetail shadow adapter', () => {
+  beforeEach(() => {
+    getGate.mockReset()
+    getRequest.mockReset()
+  })
+
+  const adapter = { type: 'graphql', config: 'endpoint: /graphql', version: 'bbbbbbbbbbbb' }
+
+  function adapterRequest(version: string) {
+    const base = makeRequest()
+    return makeRequest({
+      method: 'GET',
+      path: '/bookings/1042',
+      diff: { ...base.diff, shadow_adapter: { type: 'graphql', version } },
+    })
+  }
+
+  it('explains a body-only REST → GraphQL comparison and its mapping version', async () => {
+    const wrapper = await mountDetail(
+      adapterRequest('bbbbbbbbbbbb'),
+      makeGate({ shadow_adapter: adapter })
+    )
+
+    const note = wrapper.find('[data-testid="shadow-adapter-note"]')
+    expect(note.exists()).toBe(true)
+    expect(note.text()).toContain('REST → GraphQL')
+    expect(note.text()).toContain('bbbbbbbbbbbb')
+    expect(wrapper.text()).toContain('(not compared)')
+    expect(wrapper.find('[data-testid="mapping-changed-warning"]').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'DiffViewer' }).props('bodyOnly')).toBe(true)
+    // Replaying the REST request against the GraphQL shadow makes no sense.
+    expect(wrapper.text()).not.toContain('Shadow endpoint')
+  })
+
+  it('warns when the request was compared with another mapping', async () => {
+    const wrapper = await mountDetail(
+      adapterRequest('aaaaaaaaaaaa'),
+      makeGate({ shadow_adapter: adapter })
+    )
+
+    const warning = wrapper.find('[data-testid="mapping-changed-warning"]')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toContain('aaaaaaaaaaaa')
+    expect(warning.text()).toContain('bbbbbbbbbbbb')
+  })
+
+  it('warns when the gate no longer has a mapping', async () => {
+    const wrapper = await mountDetail(adapterRequest('aaaaaaaaaaaa'), makeGate())
+
+    expect(wrapper.find('[data-testid="mapping-changed-warning"]').text()).toContain(
+      'no longer has a mapping'
+    )
+  })
+
+  it('shows none of it for regular comparisons', async () => {
+    const wrapper = await mountDetail()
+
+    expect(wrapper.find('[data-testid="shadow-adapter-note"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('(not compared)')
+    expect(wrapper.text()).toContain('Shadow endpoint')
+    expect(wrapper.findComponent({ name: 'DiffViewer' }).props('bodyOnly')).toBe(false)
   })
 })

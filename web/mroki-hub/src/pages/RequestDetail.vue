@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import DiffViewer from '@/components/diff/DiffViewer.vue'
 import { ChevronLeft, Copy, Download, ChevronDown, Check } from 'lucide-vue-next'
 import { truncateId, methodColorClass, formatLatency } from '@/lib/utils'
+import { shadowAdapterLabel } from '@/lib/shadow-adapter'
 
 const route = useRoute()
 const router = useRouter()
@@ -64,6 +65,20 @@ const liveResponse = computed(() => request.value?.live_response ?? null)
 const shadowResponse = computed(() => request.value?.shadow_response ?? null)
 
 const diffCount = computed(() => request.value?.diff?.content?.length ?? 0)
+
+// A diff computed through a shadow adapter (e.g. REST → GraphQL) compared only
+// the normalized bodies, with the mapping version recorded on the diff.
+const diffAdapter = computed(() => request.value?.diff?.shadow_adapter ?? null)
+// The gate's current mapping version ('' when it no longer has an adapter).
+const gateMappingVersion = computed(() => gate.value?.shadow_adapter?.version ?? '')
+// Flags a comparison made with a mapping other than the gate's current one, so
+// diffs computed with different rules are never mistaken for one another.
+const mappingChanged = computed(
+  () =>
+    diffAdapter.value !== null &&
+    gate.value !== null &&
+    gateMappingVersion.value !== diffAdapter.value.version
+)
 
 const TRUNCATION_CHAR_BUDGET = 80
 
@@ -233,7 +248,9 @@ onUnmounted(() => {
               <span class="w-1.5 h-1.5 rounded-full bg-success mr-2" />
               Live endpoint
             </DropdownMenuItem>
-            <DropdownMenuItem @click="copyCurl('shadow')">
+            <!-- A shadow adapter rewrites the request (e.g. into GraphQL), so the
+                 REST request replayed against shadow would not be what it got. -->
+            <DropdownMenuItem v-if="!diffAdapter" @click="copyCurl('shadow')">
               <span class="w-1.5 h-1.5 rounded-full bg-info mr-2" />
               Shadow endpoint
             </DropdownMenuItem>
@@ -335,7 +352,10 @@ onUnmounted(() => {
             </span>
           </div>
           <div v-if="liveResponse">
-            <div class="text-xs uppercase tracking-widest text-dim mb-1">Live Status</div>
+            <div class="text-xs uppercase tracking-widest text-dim mb-1">
+              Live Status
+              <span v-if="diffAdapter" class="normal-case tracking-normal">(not compared)</span>
+            </div>
             <div class="flex items-center gap-1.5">
               <span
                 class="text-xs font-mono font-medium"
@@ -347,7 +367,10 @@ onUnmounted(() => {
             </div>
           </div>
           <div v-if="shadowResponse">
-            <div class="text-xs uppercase tracking-widest text-dim mb-1">Shadow Status</div>
+            <div class="text-xs uppercase tracking-widest text-dim mb-1">
+              Shadow Status
+              <span v-if="diffAdapter" class="normal-case tracking-normal">(not compared)</span>
+            </div>
             <div class="flex items-center gap-1.5">
               <span
                 class="text-xs font-mono font-medium"
@@ -361,11 +384,45 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- Shadow adapter: what was compared, and with which mapping -->
+      <Alert v-if="diffAdapter" data-testid="shadow-adapter-note" class="border-info/40">
+        <AlertTitle>{{ shadowAdapterLabel(diffAdapter.type) }} · body only</AlertTitle>
+        <AlertDescription>
+          <p>
+            The shadow response was normalized to the live shape with mapping
+            <code class="font-mono text-foreground">{{ diffAdapter.version }}</code> before
+            comparing. Only the mapped body fields are compared; status codes and headers are not.
+          </p>
+        </AlertDescription>
+      </Alert>
+      <Alert
+        v-if="mappingChanged"
+        data-testid="mapping-changed-warning"
+        class="border-warning/40 *:data-[slot=alert-title]:text-warning"
+      >
+        <AlertTitle>Compared with a different mapping</AlertTitle>
+        <AlertDescription>
+          <p>
+            This request was compared with mapping
+            <code class="font-mono text-foreground">{{ diffAdapter!.version }}</code
+            >, but the gate
+            <template v-if="gateMappingVersion">
+              now uses mapping
+              <code class="font-mono text-foreground">{{ gateMappingVersion }}</code
+              >.
+            </template>
+            <template v-else>no longer has a mapping.</template>
+            Its differences may not match requests compared with the current mapping.
+          </p>
+        </AlertDescription>
+      </Alert>
+
       <!-- Diff Viewer -->
       <DiffViewer
         v-if="liveResponse && shadowResponse"
         :live-response="liveResponse"
         :shadow-response="shadowResponse"
+        :body-only="diffAdapter !== null"
         :diff-content="request.diff.content"
         :diff-config="gate?.diff_config ?? request.diff.config"
         @ignore-field="onIgnoreField"

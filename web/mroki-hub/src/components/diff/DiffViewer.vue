@@ -62,6 +62,12 @@ interface Props {
   shadowResponse: Response
   diffContent: PatchOp[] | null
   diffConfig?: DiffConfig | null
+  /**
+   * Only the bodies were compared (e.g. through a REST → GraphQL adapter):
+   * headers are left out of the view, since they were not diffed and would
+   * otherwise render as if they matched.
+   */
+  bodyOnly?: boolean
 }
 
 const props = defineProps<Props>()
@@ -90,11 +96,14 @@ const summary = computed(() => {
   return { body, header, ignored: ignoredFields.value.length }
 })
 
-function tryParseJson(str: string): unknown | null {
+// Returns undefined when the string is not JSON. JSON `null` is a valid body
+// (e.g. a GraphQL "not found" normalized to null), so it must not be confused
+// with a parse failure.
+function tryParseJson(str: string): unknown {
   try {
     return JSON.parse(str)
   } catch {
-    return null
+    return undefined
   }
 }
 function isBinaryContent(str: string): boolean {
@@ -109,15 +118,23 @@ const isBinary = computed(
     (liveBody.value !== null && isBinaryContent(liveBody.value)) ||
     (shadowBody.value !== null && isBinaryContent(shadowBody.value))
 )
-const liveJson = computed(() => (liveBody.value ? tryParseJson(liveBody.value) : null))
-const shadowJson = computed(() => (shadowBody.value ? tryParseJson(shadowBody.value) : null))
-const isJson = computed(() => liveJson.value !== null && shadowJson.value !== null)
+const liveJson = computed(() => (liveBody.value ? tryParseJson(liveBody.value) : undefined))
+const shadowJson = computed(() => (shadowBody.value ? tryParseJson(shadowBody.value) : undefined))
+const isJson = computed(() => liveJson.value !== undefined && shadowJson.value !== undefined)
 
 const liveCombined = computed(() =>
-  isJson.value ? { headers: props.liveResponse.headers, body: liveJson.value } : null
+  isJson.value
+    ? props.bodyOnly
+      ? { body: liveJson.value }
+      : { headers: props.liveResponse.headers, body: liveJson.value }
+    : null
 )
 const shadowCombined = computed(() =>
-  isJson.value ? { headers: props.shadowResponse.headers, body: shadowJson.value } : null
+  isJson.value
+    ? props.bodyOnly
+      ? { body: shadowJson.value }
+      : { headers: props.shadowResponse.headers, body: shadowJson.value }
+    : null
 )
 
 const combinedOps = computed(() => {
