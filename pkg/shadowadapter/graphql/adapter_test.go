@@ -21,10 +21,10 @@ func newBookingsAdapter(t *testing.T) *graphql.Adapter {
 				Variables: map[string]string{"id": "path.id"},
 				Response: graphql.ResponseConfig{
 					Root: "data.booking",
-					Fields: map[string]string{
-						"id":             "id",
-						"guest_name":     "guestName",
-						"dates.check_in": "stay.checkIn",
+					Fields: map[string]graphql.FieldMapping{
+						"id":             {From: "id"},
+						"guest_name":     {From: "guestName"},
+						"dates.check_in": {From: "stay.checkIn"},
 					},
 				},
 			},
@@ -33,7 +33,7 @@ func newBookingsAdapter(t *testing.T) *graphql.Adapter {
 				Query: "{ featuredBooking { id } }",
 				Response: graphql.ResponseConfig{
 					Root:   "data.featuredBooking",
-					Fields: map[string]string{"id": "id"},
+					Fields: map[string]graphql.FieldMapping{"id": {From: "id"}},
 				},
 			},
 		},
@@ -46,7 +46,7 @@ func newBookingsAdapter(t *testing.T) *graphql.Adapter {
 func TestNew_rejects_conflicting_patterns(t *testing.T) {
 	route := graphql.RouteConfig{
 		Query:    "{ a }",
-		Response: graphql.ResponseConfig{Root: "data.a", Fields: map[string]string{"a": "a"}},
+		Response: graphql.ResponseConfig{Root: "data.a", Fields: map[string]graphql.FieldMapping{"a": {From: "a"}}},
 	}
 	r1, r2 := route, route
 	r1.Match = "GET /bookings/{id}"
@@ -164,10 +164,11 @@ func TestAdapter_Normalize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			live, shadow, err := a.Normalize(http.MethodGet, "/bookings/1042", []byte(tt.live), []byte(tt.shadow))
+			got, err := a.Normalize(http.MethodGet, "/bookings/1042", []byte(tt.live), []byte(tt.shadow))
 			require.NoError(t, err)
-			assert.JSONEq(t, tt.wantLive, string(live))
-			assert.JSONEq(t, tt.wantShadow, string(shadow))
+			assert.JSONEq(t, tt.wantLive, string(got.Live))
+			assert.JSONEq(t, tt.wantShadow, string(got.Shadow))
+			assert.Empty(t, got.Conversions, "no field declares a conversion")
 		})
 	}
 }
@@ -175,12 +176,12 @@ func TestAdapter_Normalize(t *testing.T) {
 func TestAdapter_Normalize_errors(t *testing.T) {
 	a := newBookingsAdapter(t)
 
-	_, _, err := a.Normalize(http.MethodGet, "/guests/7", []byte(`{}`), []byte(`{}`))
+	_, err := a.Normalize(http.MethodGet, "/guests/7", []byte(`{}`), []byte(`{}`))
 	assert.ErrorIs(t, err, graphql.ErrNoRoute)
 
-	_, _, err = a.Normalize(http.MethodGet, "/bookings/1042", []byte(`not json`), []byte(`{}`))
+	_, err = a.Normalize(http.MethodGet, "/bookings/1042", []byte(`not json`), []byte(`{}`))
 	assert.ErrorContains(t, err, "live body is not valid JSON")
 
-	_, _, err = a.Normalize(http.MethodGet, "/bookings/1042", []byte(`{}`), []byte(`<html>`))
+	_, err = a.Normalize(http.MethodGet, "/bookings/1042", []byte(`{}`), []byte(`<html>`))
 	assert.ErrorContains(t, err, "shadow body is not valid JSON")
 }

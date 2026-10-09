@@ -283,9 +283,9 @@ func TestCompare_redaction_never_leaks_headers(t *testing.T) {
 
 func TestCompare_with_body_normalizer(t *testing.T) {
 	redactor := traffictesting.NewRedactor([]string{"body.guest_name"})
-	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
+	normalize := func(live, shadow []byte) (services.NormalizedBodies, error) {
 		// Stand-in for a GraphQL adapter: unwrap the shadow body into the REST shape.
-		return live, []byte(`{"id":"42","guest_name":"Bob"}`), nil
+		return services.NormalizedBodies{Live: live, Shadow: []byte(`{"id":"42","guest_name":"Bob"}`)}, nil
 	}
 	comparer := services.NewResponseComparer(redactor, nil, services.WithBodyNormalizer(normalize))
 
@@ -303,10 +303,38 @@ func TestCompare_with_body_normalizer(t *testing.T) {
 	assertOpsFreeOfSecrets(t, result.Ops, "Alice", "Bob")
 }
 
+func TestCompare_returns_conversions_with_redacted_originals(t *testing.T) {
+	redactor := traffictesting.NewRedactor([]string{"body.document"})
+	normalize := func(live, shadow []byte) (services.NormalizedBodies, error) {
+		return services.NormalizedBodies{
+			Live:   live,
+			Shadow: []byte(`{"id":42,"document":12345678}`),
+			Conversions: []traffictesting.FieldConversion{
+				{Field: "id", As: "number", Original: []byte(`"42"`)},
+				{Field: "document", As: "number", Original: []byte(`"12345678"`)},
+			},
+		}, nil
+	}
+	comparer := services.NewResponseComparer(redactor, nil, services.WithBodyNormalizer(normalize))
+
+	req := services.ResponseData{Body: []byte(`{}`)}
+	live := services.ResponseData{StatusCode: 200, Body: []byte(`{"id":42,"document":12345678}`)}
+	shadow := services.ResponseData{StatusCode: 200, Body: []byte(`{}`)}
+
+	result, err := comparer.Compare(req, live, shadow)
+
+	require.NoError(t, err)
+	assert.Empty(t, result.Ops)
+	assert.Equal(t, []traffictesting.FieldConversion{
+		{Field: "id", As: "number", Original: []byte(`"42"`)},
+		{Field: "document", As: "number", Original: []byte(`"[REDACTED]"`)},
+	}, result.Conversions, "the original of a redacted field must not be stored")
+}
+
 func TestCompare_body_normalizer_error_falls_back_to_original_bodies(t *testing.T) {
 	redactor := traffictesting.NewRedactor(nil)
-	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
-		return nil, nil, assert.AnError
+	normalize := func(live, shadow []byte) (services.NormalizedBodies, error) {
+		return services.NormalizedBodies{}, assert.AnError
 	}
 	comparer := services.NewResponseComparer(redactor, nil, services.WithBodyNormalizer(normalize))
 

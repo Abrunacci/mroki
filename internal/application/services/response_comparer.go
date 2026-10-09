@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,12 +23,23 @@ type CompareResult struct {
 	Live    traffictesting.RedactResult
 	Shadow  traffictesting.RedactResult
 	Ops     []diff.PatchOp
+	// Conversions lists the declared field conversions the normalizer applied
+	// to the shadow body; originals of redacted fields are redacted.
+	Conversions []traffictesting.FieldConversion
+}
+
+// NormalizedBodies is the result of a BodyNormalizer: both bodies in a
+// comparable shape and the declared field conversions applied to the shadow.
+type NormalizedBodies struct {
+	Live        []byte
+	Shadow      []byte
+	Conversions []traffictesting.FieldConversion
 }
 
 // BodyNormalizer rewrites the live and shadow bodies into a comparable shape
 // before they are redacted and diffed, e.g. a GraphQL response into the shape
 // of the REST response it replaces.
-type BodyNormalizer func(live, shadow []byte) ([]byte, []byte, error)
+type BodyNormalizer func(live, shadow []byte) (NormalizedBodies, error)
 
 // ResponseComparer encapsulates the normalize + redact + envelope + diff pipeline.
 type ResponseComparer struct {
@@ -86,10 +98,12 @@ func (c *ResponseComparer) Compare(req, live, shadow ResponseData) (*CompareResu
 
 	// 1. Normalize the bodies into a comparable shape, when configured. A
 	// failure falls back to the original bodies (best-effort).
+	var conversions []traffictesting.FieldConversion
 	if c.normalizer != nil {
-		if liveBody, shadowBody, err := c.normalizer(live.Body, shadow.Body); err == nil {
-			live.Body = liveBody
-			shadow.Body = shadowBody
+		if n, err := c.normalizer(live.Body, shadow.Body); err == nil {
+			live.Body = n.Live
+			shadow.Body = n.Shadow
+			conversions = c.redactConversions(n.Conversions)
 		}
 	}
 
@@ -134,5 +148,24 @@ func (c *ResponseComparer) Compare(req, live, shadow ResponseData) (*CompareResu
 		Live:    liveResult,
 		Shadow:  shadowResult,
 		Ops:     ops,
+
+		Conversions: conversions,
 	}, nil
+}
+
+// redactConversions hides the original value of conversions on redacted
+// fields, since it is the unredacted shadow value.
+func (c *ResponseComparer) redactConversions(cs []traffictesting.FieldConversion) []traffictesting.FieldConversion {
+	if len(cs) == 0 {
+		return nil
+	}
+	redacted, _ := json.Marshal(traffictesting.RedactedValue)
+	out := make([]traffictesting.FieldConversion, len(cs))
+	for i, conv := range cs {
+		if c.redactor.RedactsBodyPath(conv.Field) {
+			conv.Original = redacted
+		}
+		out[i] = conv
+	}
+	return out
 }

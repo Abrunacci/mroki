@@ -33,7 +33,7 @@ const pathVariablePrefix = "path."
 //	    response:
 //	      root: data.booking
 //	      fields:
-//	        id: id
+//	        id: { from: id, as: number }
 //	        guest_name: guestName
 type Config struct {
 	// Endpoint is the GraphQL path on the shadow URL (e.g. "/graphql").
@@ -61,9 +61,10 @@ type ResponseConfig struct {
 	// Root is the dot-separated path of the object to compare, e.g. "data.booking".
 	Root string `yaml:"root"`
 	// Fields maps each REST field (dot path) to the GraphQL field (dot path,
-	// relative to Root) that holds its value. Only mapped fields are compared,
-	// on both sides.
-	Fields map[string]string `yaml:"fields"`
+	// relative to Root) that holds its value, optionally with the type the
+	// GraphQL value is converted to before comparing. Only mapped fields are
+	// compared, on both sides.
+	Fields map[string]FieldMapping `yaml:"fields"`
 }
 
 // LoadConfig reads and validates a mapping configuration from a YAML file.
@@ -136,12 +137,15 @@ func (r RouteConfig) validate() error {
 	if len(r.Response.Fields) == 0 {
 		return errors.New("response.fields must map at least one field")
 	}
-	for rest, gql := range r.Response.Fields {
+	for rest, f := range r.Response.Fields {
 		if err := validateDotPath(rest); err != nil {
 			return fmt.Errorf("response.fields key %q: %w", rest, err)
 		}
-		if err := validateDotPath(gql); err != nil {
+		if err := validateDotPath(f.From); err != nil {
 			return fmt.Errorf("response.fields[%q]: %w", rest, err)
+		}
+		if err := f.As.validate(); err != nil {
+			return fmt.Errorf("response.fields[%q].as: %w", rest, err)
 		}
 	}
 	return nil

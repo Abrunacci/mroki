@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -97,8 +98,19 @@ type DiffDetail struct {
 	ShadowAdapter *DiffShadowAdapter `json:"shadow_adapter"`
 }
 
-// DiffShadowAdapter identifies the shadow adapter mapping a diff was computed with.
+// DiffShadowAdapter identifies the shadow adapter mapping a diff was computed
+// with and the declared field conversions it applied.
 type DiffShadowAdapter struct {
-	Type    string `json:"type"`
-	Version string `json:"version"`
+	Type        string            `json:"type"`
+	Version     string            `json:"version"`
+	Conversions []FieldConversion `json:"conversions"`
+}
+
+// FieldConversion is a declared type conversion applied to the shadow value of
+// one body field before diffing. Original is the value as received.
+type FieldConversion struct {
+	Field    string          `json:"field"`
+	As       string          `json:"as"`
+	Original json.RawMessage `json:"original"`
+	Error    string          `json:"error,omitempty"`
 }

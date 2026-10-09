@@ -150,8 +150,31 @@ func mapDiffToDomain(raw *ent.Diff) traffictesting.Diff {
 			Type:    raw.Config.ShadowAdapter.Type,
 			Version: raw.Config.ShadowAdapter.Version,
 		}
+		d.Conversions = mapFieldConversionsToDomain(raw.Config.ShadowAdapter.Conversions)
 	}
 	return d
+}
+
+func mapFieldConversionsToDomain(cs []schema.FieldConversionSnapshot) []traffictesting.FieldConversion {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]traffictesting.FieldConversion, len(cs))
+	for i, c := range cs {
+		out[i] = traffictesting.FieldConversion{Field: c.Field, As: c.As, Original: c.Original, Error: c.Error}
+	}
+	return out
+}
+
+func mapFieldConversionsToPersistence(cs []traffictesting.FieldConversion) []schema.FieldConversionSnapshot {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]schema.FieldConversionSnapshot, len(cs))
+	for i, c := range cs {
+		out[i] = schema.FieldConversionSnapshot{Field: c.Field, As: c.As, Original: c.Original, Error: c.Error}
+	}
+	return out
 }
 
 func mapDiffConfigToPersistence(d traffictesting.Diff) schema.DiffConfigSnapshot {
@@ -164,8 +187,9 @@ func mapDiffConfigToPersistence(d traffictesting.Diff) schema.DiffConfigSnapshot
 	}
 	if !d.ShadowAdapter.IsZero() {
 		snapshot.ShadowAdapter = &schema.ShadowAdapterSnapshot{
-			Type:    d.ShadowAdapter.Type,
-			Version: d.ShadowAdapter.Version,
+			Type:        d.ShadowAdapter.Type,
+			Version:     d.ShadowAdapter.Version,
+			Conversions: mapFieldConversionsToPersistence(d.Conversions),
 		}
 	}
 	return snapshot

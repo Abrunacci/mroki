@@ -572,6 +572,11 @@ func TestRequestRepository_Save_persists_shadow_adapter_snapshot(t *testing.T) {
 
 	withAdapter := newTestRequest(t, gateID)
 	withAdapter.Diff.ShadowAdapter = traffictesting.ShadowAdapterSnapshot{Type: "graphql", Version: "0123456789ab"}
+	conversions := []traffictesting.FieldConversion{
+		{Field: "id", As: "number", Original: json.RawMessage(`"1042"`)},
+		{Field: "check_in", As: "date", Original: json.RawMessage(`"2026-10-09T15:30:00Z"`), Error: `"2026-10-09T15:30:00Z" is not at midnight`},
+	}
+	withAdapter.Diff.Conversions = conversions
 	withoutAdapter := newTestRequest(t, gateID)
 	require.NoError(t, reqRepo.Save(context.Background(), withAdapter))
 	require.NoError(t, reqRepo.Save(context.Background(), withoutAdapter))
@@ -579,8 +584,10 @@ func TestRequestRepository_Save_persists_shadow_adapter_snapshot(t *testing.T) {
 	got, err := reqRepo.GetByID(context.Background(), withAdapter.ID, gateID)
 	require.NoError(t, err)
 	assert.Equal(t, traffictesting.ShadowAdapterSnapshot{Type: "graphql", Version: "0123456789ab"}, got.Diff.ShadowAdapter)
+	assert.Equal(t, conversions, got.Diff.Conversions)
 
 	got, err = reqRepo.GetByID(context.Background(), withoutAdapter.ID, gateID)
 	require.NoError(t, err)
 	assert.True(t, got.Diff.ShadowAdapter.IsZero())
+	assert.Empty(t, got.Diff.Conversions)
 }

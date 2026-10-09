@@ -228,3 +228,106 @@ describe('DiffViewer body-only comparisons', () => {
     expect(wrapper.text()).toContain('null')
   })
 })
+
+describe('DiffViewer declared conversions', () => {
+  const conversions = [
+    { field: 'id', as: 'number' as const, original: '1042' },
+    {
+      field: 'check_in',
+      as: 'date' as const,
+      original: '2026-10-09T15:30:00Z',
+      error: '"2026-10-09T15:30:00Z" is not at midnight',
+    },
+  ]
+
+  async function mountWithConversions(view: 'Unified' | 'Split' | 'Patch') {
+    const wrapper = mount(DiffViewer, {
+      props: {
+        // id was converted ("1042" -> 1042) and matches; check_in failed.
+        liveResponse: makeResponse({ id: 1042, check_in: '2026-10-09' }),
+        shadowResponse: makeResponse({ id: 1042, check_in: '2026-10-09T15:30:00Z' }),
+        diffContent: [{ op: 'replace', path: '/body/check_in', value: '2026-10-09T15:30:00Z' }],
+        diffConfig: makeConfig(),
+        bodyOnly: true,
+        conversions,
+      },
+      global,
+    })
+    await flushPromises()
+    const toggle = wrapper.findAll('button').find((b) => b.text() === view)
+    await toggle!.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  it.each(['Unified', 'Split', 'Patch'] as const)(
+    'shows the original value and failures as visible text in the %s view',
+    async (view) => {
+      const wrapper = await mountWithConversions(view)
+      const notes = wrapper.findAll('[data-testid="conversion-note"]').map((n) => n.text())
+
+      if (view === 'Patch') {
+        // Only differences are listed: the failed conversion.
+        expect(notes).toEqual(['as date failed: "2026-10-09T15:30:00Z" is not at midnight'])
+        return
+      }
+      // Each converted field is annotated once, on the shadow side.
+      expect(notes).toEqual([
+        'as number · sent "1042"',
+        'as date failed: "2026-10-09T15:30:00Z" is not at midnight',
+      ])
+    }
+  )
+
+  it('adds no collapse affordance to objects that were already expanded', async () => {
+    const wrapper = await mountWithConversions('Split')
+    expect(wrapper.text()).not.toContain('collapse')
+  })
+
+  it('marks a failed conversion as a danger note', async () => {
+    const wrapper = await mountWithConversions('Split')
+    const failed = wrapper
+      .findAll('[data-testid="conversion-note"]')
+      .find((n) => n.text().includes('failed'))
+    expect(failed!.classes()).toContain('text-danger')
+  })
+
+  it('expands unchanged objects holding a converted field, so its note is visible', async () => {
+    const wrapper = mount(DiffViewer, {
+      props: {
+        // Nothing differs: the body would otherwise render collapsed.
+        liveResponse: makeResponse({ id: 1043, stay: { check_in: '2026-11-02' } }),
+        shadowResponse: makeResponse({ id: 1043, stay: { check_in: '2026-11-02' } }),
+        diffContent: [],
+        diffConfig: makeConfig(),
+        bodyOnly: true,
+        conversions: [
+          { field: 'id', as: 'number', original: '1043' },
+          { field: 'stay.check_in', as: 'date', original: '2026-11-02T00:00:00Z' },
+        ],
+      },
+      global,
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="conversion-note"]').map((n) => n.text())).toEqual([
+      'as number · sent "1043"',
+      'as date · sent "2026-11-02T00:00:00Z"',
+    ])
+  })
+
+  it('shows no notes without conversions', async () => {
+    const wrapper = mount(DiffViewer, {
+      props: {
+        liveResponse: makeResponse({ id: 1 }),
+        shadowResponse: makeResponse({ id: 1 }),
+        diffContent: [],
+        diffConfig: makeConfig(),
+        bodyOnly: true,
+      },
+      global,
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="conversion-note"]').exists()).toBe(false)
+  })
+})

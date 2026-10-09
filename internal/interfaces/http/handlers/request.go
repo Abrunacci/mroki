@@ -251,7 +251,7 @@ func toRequestResponseDTO(req *traffictesting.Request) dto.Request {
 			LatencyMs:  req.ShadowResponse.LatencyMs,
 		},
 		HasDiff:       req.Diff.HasContent(),
-		ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff.ShadowAdapter),
+		ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff),
 	}
 }
 
@@ -295,14 +295,18 @@ func toFullRequestResponseDTO(req *traffictesting.Request) dto.RequestDetail {
 				FloatTolerance: req.Diff.Config.FloatTolerance,
 				SortArrays:     req.Diff.Config.SortArrays,
 			},
-			ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff.ShadowAdapter),
+			ShadowAdapter: mapDiffShadowAdapterToDTO(req.Diff),
 		},
 	}
 }
 
-func mapDiffShadowAdapterToDTO(s traffictesting.ShadowAdapterSnapshot) *dto.DiffShadowAdapter {
-	if s.IsZero() {
+func mapDiffShadowAdapterToDTO(d traffictesting.Diff) *dto.DiffShadowAdapter {
+	if d.ShadowAdapter.IsZero() {
 		return nil
 	}
-	return &dto.DiffShadowAdapter{Type: s.Type, Version: s.Version}
+	conversions := make([]dto.FieldConversion, len(d.Conversions))
+	for i, c := range d.Conversions {
+		conversions[i] = dto.FieldConversion{Field: c.Field, As: c.As, Original: c.Original, Error: c.Error}
+	}
+	return &dto.DiffShadowAdapter{Type: d.ShadowAdapter.Type, Version: d.ShadowAdapter.Version, Conversions: conversions}
 }

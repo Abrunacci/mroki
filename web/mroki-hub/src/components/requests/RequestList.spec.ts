@@ -4,7 +4,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import RequestList from './RequestList.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import type { FilterState } from './RequestFilters.vue'
-import type { PaginatedResponse, Request } from '@/api'
+import type { FieldConversion, PaginatedResponse, Request } from '@/api'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
@@ -359,8 +359,14 @@ describe('RequestList mapping version flag', () => {
   it('flags rows compared with a mapping other than the gate current one', async () => {
     const wrapper = await mountWithVersion(
       [
-        makeRequest({ id: 'old', shadow_adapter: { type: 'graphql', version: 'aaaaaaaaaaaa' } }),
-        makeRequest({ id: 'new', shadow_adapter: { type: 'graphql', version: 'bbbbbbbbbbbb' } }),
+        makeRequest({
+          id: 'old',
+          shadow_adapter: { type: 'graphql', version: 'aaaaaaaaaaaa', conversions: [] },
+        }),
+        makeRequest({
+          id: 'new',
+          shadow_adapter: { type: 'graphql', version: 'bbbbbbbbbbbb', conversions: [] },
+        }),
       ],
       'bbbbbbbbbbbb'
     )
@@ -374,5 +380,51 @@ describe('RequestList mapping version flag', () => {
     const wrapper = await mountWithVersion([makeRequest()], null)
 
     expect(wrapper.text()).not.toContain('Other mapping')
+  })
+})
+
+describe('RequestList conversion badge', () => {
+  async function mountRows(requests: Request[]) {
+    getRequests.mockResolvedValue(makeResponse(requests))
+    const wrapper = mount(RequestList, {
+      props: { gateId: 'gate-1', filters, mappingVersion: 'v1' },
+      global: makeGlobal(),
+    })
+    await flushPromises()
+    return wrapper.findAll('[role="button"]')
+  }
+
+  const adapter = (conversions: FieldConversion[]) => ({
+    type: 'graphql',
+    version: 'v1',
+    conversions,
+  })
+
+  it('marks rows whose comparison used declared conversions, even without a diff', async () => {
+    const rows = await mountRows([
+      makeRequest({
+        id: 'converted',
+        has_diff: false,
+        shadow_adapter: adapter([
+          { field: 'id', as: 'number', original: '1043' },
+          { field: 'check_in', as: 'date', original: '2026-11-02T00:00:00Z' },
+        ]),
+      }),
+      makeRequest({
+        id: 'failed',
+        has_diff: true,
+        shadow_adapter: adapter([
+          { field: 'id', as: 'number', original: 'x', error: '"x" is not a number' },
+        ]),
+      }),
+      makeRequest({ id: 'none', shadow_adapter: adapter([]) }),
+    ])
+
+    expect(rows[0]!.find('[data-testid="conversion-badge"]').text()).toBe('2 conversions')
+    expect(rows[0]!.text()).toContain('No diff')
+    const failed = rows[1]!.find('[data-testid="conversion-badge"]')
+    expect(failed.text()).toBe('Conversion failed')
+    expect(failed.classes()).toContain('text-danger')
+    expect(rows[2]!.find('[data-testid="conversion-badge"]').exists()).toBe(false)
   })
 })

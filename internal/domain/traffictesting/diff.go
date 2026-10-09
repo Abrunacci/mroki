@@ -12,6 +12,9 @@ type Diff struct {
 	// ShadowAdapter records the adapter and mapping version the diff was
 	// computed with. When set, only the (normalized) bodies were compared.
 	ShadowAdapter ShadowAdapterSnapshot
+	// Conversions lists the declared field conversions applied to the
+	// shadow body before diffing (only with a shadow adapter).
+	Conversions []FieldConversion
 }
 
 type diffOption func(*Diff)
@@ -49,9 +52,13 @@ func (d Diff) HasContent() bool {
 	return len(d.Content) > 0
 }
 
-// Equals checks value equality by comparing Content, Config and ShadowAdapter.
+// Equals checks value equality by comparing Content, Config, ShadowAdapter
+// and Conversions.
 func (d Diff) Equals(other Diff) bool {
 	if !reflect.DeepEqual(d.Content, other.Content) {
+		return false
+	}
+	if !reflect.DeepEqual(d.Conversions, other.Conversions) {
 		return false
 	}
 	if d.ShadowAdapter != other.ShadowAdapter {

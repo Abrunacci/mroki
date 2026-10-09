@@ -127,11 +127,31 @@ export interface Diff {
 }
 
 /**
- * DiffShadowAdapter identifies the shadow adapter mapping a diff was computed with.
+ * DiffShadowAdapter identifies the shadow adapter mapping a diff was computed
+ * with, and the field conversions declared in that mapping that it applied.
  */
 export interface DiffShadowAdapter {
   type: string
   version: string
+  conversions: FieldConversion[]
+}
+
+/** Type a shadow value can be converted to before comparing (mapping `as:`). */
+export type ConversionType = 'number' | 'string' | 'boolean' | 'date'
+
+/**
+ * FieldConversion is a type conversion declared in the gate's mapping and
+ * applied to the shadow value of one body field before diffing. The stored
+ * shadow body holds the converted value; `original` is what the shadow sent.
+ */
+export interface FieldConversion {
+  /** Body field path (dot-separated) in the live shape, e.g. "id". */
+  field: string
+  as: ConversionType
+  /** The shadow value as received. "[REDACTED]" for redacted fields. */
+  original: unknown
+  /** Why the value could not be converted; absent when it was. */
+  error?: string
 }
 
 /**

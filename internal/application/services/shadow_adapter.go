@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -11,7 +12,7 @@ import (
 // RouteNormalizer normalizes the live and shadow bodies of one request,
 // selected by its method and path. It is satisfied by *graphql.Adapter.
 type RouteNormalizer interface {
-	Normalize(method, path string, live, shadow []byte) ([]byte, []byte, error)
+	Normalize(method, path string, live, shadow []byte) (graphql.Normalized, error)
 }
 
 // ShadowAdapterOptions returns the ResponseComparer options for a request
@@ -20,14 +21,35 @@ type RouteNormalizer interface {
 // protocol. onError (optional) is called when normalization fails; the
 // original bodies are then compared instead.
 func ShadowAdapterOptions(n RouteNormalizer, method, path string, onError func(error)) []ComparerOption {
-	normalize := func(live, shadow []byte) ([]byte, []byte, error) {
-		l, s, err := n.Normalize(method, path, live, shadow)
-		if err != nil && onError != nil {
-			onError(err)
+	normalize := func(live, shadow []byte) (NormalizedBodies, error) {
+		res, err := n.Normalize(method, path, live, shadow)
+		if err != nil {
+			if onError != nil {
+				onError(err)
+			}
+			return NormalizedBodies{}, err
 		}
-		return l, s, err
+		return NormalizedBodies{Live: res.Live, Shadow: res.Shadow, Conversions: FieldConversions(res.Conversions)}, nil
 	}
 	return []ComparerOption{WithBodyNormalizer(normalize), WithBodyOnly()}
+}
+
+// FieldConversions converts the conversions reported by a GraphQL adapter
+// into domain field conversions.
+func FieldConversions(cs []graphql.Conversion) []traffictesting.FieldConversion {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]traffictesting.FieldConversion, len(cs))
+	for i, c := range cs {
+		original, err := json.Marshal(c.Original)
+		if err != nil {
+			// Values come from a decoded JSON body, so this cannot happen.
+			original = json.RawMessage("null")
+		}
+		out[i] = traffictesting.FieldConversion{Field: c.Field, As: string(c.As), Original: original, Error: c.Error}
+	}
+	return out
 }
 
 // maxCachedShadowAdapters bounds the ShadowAdapterCache. Entries are keyed by
