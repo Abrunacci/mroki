@@ -933,6 +933,10 @@ A paginated list of request summaries.
          "method": "GET",
          "path": "/api/users/123",
          "raw_query": "page=2\u0026limit=10",
+         "shadow_adapter": {
+            "type": "graphql",
+            "version": "3f2a9c41d07b"
+         },
          "shadow_response": {
             "latency_ms": 42,
             "status_code": 200
@@ -962,6 +966,7 @@ A paginated list of request summaries.
 - `live_response` *(ResponseSummary, required)*: Lightweight response summary used in request listings.
 - `shadow_response` *(ResponseSummary, required)*: Lightweight response summary used in request listings.
 - `has_diff` *(boolean, required)*: Whether a diff was detected between the live and shadow responses.
+- `shadow_adapter`: Shadow adapter and mapping version the diff was computed with, or null when none was used.
 
 **ResponseSummary**
 - `status_code` *(integer, required)*: HTTP status code of the response.
@@ -1168,6 +1173,10 @@ The created request summary.
       "method": "GET",
       "path": "/api/users/123",
       "raw_query": "page=2\u0026limit=10",
+      "shadow_adapter": {
+         "type": "graphql",
+         "version": "3f2a9c41d07b"
+      },
       "shadow_response": {
          "latency_ms": 42,
          "status_code": 200
@@ -1189,6 +1198,7 @@ The created request summary.
 - `live_response` *(ResponseSummary, required)*: Lightweight response summary used in request listings.
 - `shadow_response` *(ResponseSummary, required)*: Lightweight response summary used in request listings.
 - `has_diff` *(boolean, required)*: Whether a diff was detected between the live and shadow responses.
+- `shadow_adapter`: Shadow adapter and mapping version the diff was computed with, or null when none was used.
 
 **ResponseSummary**
 - `status_code` *(integer, required)*: HTTP status code of the response.

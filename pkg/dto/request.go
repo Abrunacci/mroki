@@ -58,6 +58,9 @@ type Request struct {
 	LiveResponse   *ResponseSummary `json:"live_response"`
 	ShadowResponse *ResponseSummary `json:"shadow_response"`
 	HasDiff        bool             `json:"has_diff"`
+	// ShadowAdapter is the adapter and mapping version the diff was computed
+	// with, or null, so lists can flag comparisons made with an older mapping.
+	ShadowAdapter *DiffShadowAdapter `json:"shadow_adapter"`
 }
 
 // RequestDetail represents a complete request with all responses and diff.

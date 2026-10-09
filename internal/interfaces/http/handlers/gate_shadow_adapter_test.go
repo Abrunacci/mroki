@@ -139,7 +139,9 @@ func TestToFullRequestResponseDTO_DiffShadowAdapter(t *testing.T) {
 		Diff: traffictesting.Diff{ShadowAdapter: traffictesting.ShadowAdapterSnapshot{Type: "graphql", Version: "0123456789ab"}},
 	}
 	assert.Equal(t, &dto.DiffShadowAdapter{Type: "graphql", Version: "0123456789ab"}, toFullRequestResponseDTO(req).Diff.ShadowAdapter)
+	assert.Equal(t, &dto.DiffShadowAdapter{Type: "graphql", Version: "0123456789ab"}, toRequestResponseDTO(req).ShadowAdapter)
 
 	req.Diff.ShadowAdapter = traffictesting.ShadowAdapterSnapshot{}
 	assert.Nil(t, toFullRequestResponseDTO(req).Diff.ShadowAdapter)
+	assert.Nil(t, toRequestResponseDTO(req).ShadowAdapter)
 }

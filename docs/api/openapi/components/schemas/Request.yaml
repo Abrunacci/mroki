@@ -10,6 +10,7 @@ required:
   - live_response
   - shadow_response
   - has_diff
+  - shadow_adapter
 properties:
   id:
     type: string
@@ -41,3 +42,8 @@ properties:
     type: boolean
     description: Whether a diff was detected between the live and shadow responses.
     example: false
+  shadow_adapter:
+    description: Shadow adapter and mapping version the diff was computed with, or null when none was used.
+    oneOf:
+      - $ref: "./DiffShadowAdapter.yaml"
+      - type: "null"
