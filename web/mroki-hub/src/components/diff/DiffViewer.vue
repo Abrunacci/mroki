@@ -184,11 +184,25 @@ watch(
       isJson.value && liveCombined.value && shadowCombined.value
         ? buildDiffLines(liveCombined.value, shadowCombined.value, combinedOps.value)
         : []
-    expandedPaths.value = new Set()
+    expandedPaths.value = collapsedConversionAncestors(baseDiffLines.value)
     expandedPatchRows.value = new Set()
   },
   { immediate: true }
 )
+
+// Unchanged objects render collapsed; the ones holding a converted field start
+// expanded so the conversion notes are visible without clicking. Expanding a
+// collapsed object renders all of it, so only collapsed lines are returned.
+function collapsedConversionAncestors(lines: DiffLine[]): Set<string> {
+  const ancestors = new Set<string>()
+  for (const pointer of conversionMap.value.keys()) {
+    const segments = pointer.split('/')
+    for (let i = 2; i < segments.length; i++) ancestors.add(segments.slice(0, i).join('/'))
+  }
+  return new Set(
+    lines.filter((l) => l.type === 'collapsed' && ancestors.has(l.path)).map((l) => l.path)
+  )
+}
 
 const diffLines = computed(() => {
   if (expandedPaths.value.size === 0) return baseDiffLines.value
@@ -582,7 +596,7 @@ function tokenClass(token: Token): string {
               ><span :class="tokenClass(tok)">{{ tok.text }}</span></template><span
                 v-if="lineConversion(line)"
                 data-testid="conversion-note"
-                :class="['ml-3 px-1 rounded text-[10px]', conversionNoteClass(lineConversion(line)!)]"
+                :class="['ml-3 px-1 rounded text-[10px] leading-none', conversionNoteClass(lineConversion(line)!)]"
               >{{ conversionNote(lineConversion(line)!) }}</span></div></template></pre>
       </div>
 
@@ -675,7 +689,7 @@ function tokenClass(token: Token): string {
                   ><span :class="tokenClass(tok)">{{ tok.text }}</span></template><span
                     v-if="lineConversion(row.right)"
                     data-testid="conversion-note"
-                    :class="['ml-3 px-1 rounded text-[10px]', conversionNoteClass(lineConversion(row.right)!)]"
+                    :class="['ml-3 px-1 rounded text-[10px] leading-none', conversionNoteClass(lineConversion(row.right)!)]"
                   >{{ conversionNote(lineConversion(row.right)!) }}</span></div><div
                   v-else
                   :class="['px-4 text-transparent select-none', wrapLines ? '' : 'min-w-fit']"
