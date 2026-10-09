@@ -57,8 +57,9 @@ type ProxyConfig struct {
 	// Redactor for standalone mode (redacts headers + body fields)
 	Redactor *traffictesting.Redactor
 
-	// ShadowAdapter optionally translates shadow requests and normalizes the
-	// responses (standalone mode only). When set, only bodies are compared.
+	// ShadowAdapter optionally translates shadow requests. In standalone mode
+	// it also normalizes the responses and only bodies are compared; in API
+	// mode mroki-api normalizes them with the gate's mapping.
 	ShadowAdapter ShadowAdapter
 
 	// Recorder records the shared domain comparison metrics from the standalone

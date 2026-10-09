@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pedrobarco/mroki/internal/domain/traffictesting"
+	"github.com/pedrobarco/mroki/pkg/client"
 	"github.com/pedrobarco/mroki/pkg/shadowadapter/graphql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,4 +126,73 @@ func TestProxy_graphql_adapter_skips_unmapped_routes(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code, "live traffic is unaffected")
 	assertNotShadowed(t, hits)
+}
+
+// TestProxy_graphql_adapter_api_mode checks that in API mode the proxy rewrites
+// the shadow request with the gate's mapping and forwards the original REST
+// request plus the raw GraphQL response to mroki-api, which normalizes it.
+func TestProxy_graphql_adapter_api_mode(t *testing.T) {
+	liveServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":1042,"guest_name":"Ana"}`))
+	}))
+	t.Cleanup(liveServer.Close)
+
+	shadowPaths := make(chan string, 1)
+	shadowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		shadowPaths <- r.Method + " " + r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"booking":{"id":"1042","guestName":"Ana"}}}`))
+	}))
+	t.Cleanup(shadowServer.Close)
+
+	captured := make(chan client.CapturedRequest, 1)
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var c client.CapturedRequest
+		if err := json.NewDecoder(r.Body).Decode(&c); err == nil {
+			captured <- c
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	t.Cleanup(apiServer.Close)
+
+	gqlCfg, err := graphql.ParseConfig([]byte(bookingsMapping))
+	require.NoError(t, err)
+	adapter, err := graphql.New(gqlCfg)
+	require.NoError(t, err)
+
+	liveURL, _ := url.Parse(liveServer.URL)
+	shadowURL, _ := url.Parse(shadowServer.URL)
+	apiURL, _ := url.Parse(apiServer.URL)
+	handler := Proxy(ProxyConfig{
+		Live:          liveURL,
+		Shadow:        shadowURL,
+		LiveTimeout:   5 * time.Second,
+		ShadowTimeout: 5 * time.Second,
+		APIClient:     client.NewMrokiClient(apiURL, "gate-test"),
+		ShadowAdapter: adapter,
+	})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/bookings/1042", nil))
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	select {
+	case got := <-shadowPaths:
+		assert.Equal(t, "POST /graphql", got)
+	case <-time.After(time.Second):
+		t.Fatal("shadow GraphQL service was not called")
+	}
+
+	select {
+	case got := <-captured:
+		assert.Equal(t, "GET", got.Method)
+		assert.Equal(t, "/bookings/1042", got.Path, "the API gets the original REST request")
+		assert.Nil(t, got.Diff, "the diff is computed by the API")
+		shadowBody, err := base64.StdEncoding.DecodeString(got.ShadowResponse.Body)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"data":{"booking":{"id":"1042","guestName":"Ana"}}}`, string(shadowBody), "the API gets the raw GraphQL response")
+	case <-time.After(time.Second):
+		t.Fatal("the API was not called")
+	}
 }

@@ -86,9 +86,10 @@ type Config config.Config[struct {
 	RedactedFields []string `env:"REDACTED_FIELDS"` // Comma-separated, e.g. "headers.X-Internal-Token"
 
 	// GraphQLConfig is the path to a REST → GraphQL mapping file (optional,
-	// standalone mode only). When set, matching REST requests are translated
-	// into GraphQL queries for shadow and the responses are normalized back
-	// into the REST shape before diffing.
+	// standalone mode only; in API mode the mapping is the gate's
+	// shadow_adapter). When set, matching REST requests are translated into
+	// GraphQL queries for shadow and the responses are normalized back into
+	// the REST shape before diffing.
 	GraphQLConfig string `env:"GRAPHQL_CONFIG"`
 }]
 
@@ -173,10 +174,11 @@ func (c Config) Validate() error {
 		}
 	}
 
-	// The GraphQL adapter normalizes responses in the standalone callback only;
-	// in API mode the diff is computed server-side without it.
+	// In API mode the mapping lives on the gate (shadow_adapter), so the proxy
+	// and mroki-api always use the same one; a local file would be ignored by
+	// the API and could disagree with it.
 	if hasAPIConfig && c.App.GraphQLConfig != "" {
-		verr.Add(config.SeverityError, "graphql_config is only supported in standalone mode (LIVE_URL+SHADOW_URL)")
+		verr.Add(config.SeverityError, "graphql_config is only supported in standalone mode (LIVE_URL+SHADOW_URL); in API mode set the mapping on the gate (shadow_adapter)")
 	}
 
 	// Validate timeouts (both modes)
