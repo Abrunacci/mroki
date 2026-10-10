@@ -4,9 +4,9 @@
 # shape. Only the fields listed under response.fields are compared.
 #
 # A field is either the GraphQL field name or {from: <field>, as: <type>}.
-# "as" converts the GraphQL value before comparing, so a known type difference
-# is accepted while the value is still compared. Types: number, string,
-# boolean, date. A value that cannot be converted is a difference.
+# "as" translates the GraphQL value to the REST type or format (a GraphQL ID is
+# always text), like renaming translates the field name. Types: number,
+# string, boolean, date. A value that cannot be translated is a difference.
 endpoint: /graphql
 
 routes:

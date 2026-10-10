@@ -24,10 +24,10 @@ type booking struct {
 }
 
 var bookings = map[string]booking{
-	// 1042: the id and check-in types differ (accepted by the mapping's
-	// conversions), and the price differs for real: a migration bug.
+	// 1042: the id and check-in come in GraphQL's own representation (the
+	// mapping translates them), and the price differs for real: a migration bug.
 	"1042": {ID: "1042", GuestName: "Ana Pérez", CheckIn: "2026-10-09T00:00:00Z", CheckOut: "2026-10-12", Status: "confirmed", TotalPrice: 405.5},
-	// 1043: only the accepted type differences, so no differences remain.
+	// 1043: only protocol differences, so nothing differs once translated.
 	"1043": {ID: "1043", GuestName: "Luis Gómez", CheckIn: "2026-11-02T00:00:00Z", CheckOut: "2026-11-04", Status: "cancelled", TotalPrice: 180},
 	// 1044: a Relay-style global ID, which cannot be compared as a number.
 	"1044": {ID: "Qm9va2luZzoxMDQ0", GuestName: "Marta Ruiz", CheckIn: "2026-12-20T00:00:00Z", CheckOut: "2026-12-23", Status: "confirmed", TotalPrice: 320},
